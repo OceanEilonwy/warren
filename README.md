@@ -3,7 +3,7 @@
 Plans a small meat-rabbit herd that fits your space and the WA Code of Practice: a day-by-day stochastic
 simulation in Rust, a solver that chooses the herd, cages and timings, and a Solid.js UI.
 
-**Try it:** https://oceaneilonwy.github.io/warren/ (the standalone build, deployed by CI from `main`).
+**Try it:** https://warren.hollingworth.xyz (the standalone build on GitHub Pages, deployed by CI from `main`).
 
 It runs two ways, from the same Rust code:
 
