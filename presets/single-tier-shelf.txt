@@ -1,0 +1,13 @@
+# One low tier of cages along a wall, reachable from the front only.
+name = Single-tier wall run
+description = 3 m run, 0.75 m deep, one tier, reach from one side
+objective = max_meat
+
+width_m = 3
+depth_m = 0.75
+height_m = 0.6
+access_both_sides = false
+
+constraint.qol = min 1
+constraint.max_headcount = max 0
+constraint.tiers = max 1

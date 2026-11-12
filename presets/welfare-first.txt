@@ -1,0 +1,14 @@
+# Give the rabbits as much room as possible while still getting a useful amount of meat.
+name = Welfare first (150 kg/yr)
+description = Most floor space that still gives 150 kg/yr and a herd of 40+
+objective = max_qol
+
+width_m = 2
+depth_m = 1.5
+height_m = 1.35
+access_both_sides = true
+
+constraint.qol = min 1
+constraint.max_headcount = max 0
+constraint.meat = min 150
+constraint.peak_head = min 40

@@ -1,0 +1,12 @@
+# Same shed, but every cage gets 50% more floor than the Code requires.
+name = Comfortable cages (+50%)
+description = Same 2 × 1.5 m shed with 50% more floor space per rabbit
+objective = max_meat
+
+width_m = 2
+depth_m = 1.5
+height_m = 1.35
+access_both_sides = true
+
+constraint.qol = min 1.5
+constraint.max_headcount = max 0

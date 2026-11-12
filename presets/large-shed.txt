@@ -1,0 +1,12 @@
+# A bigger shed with a herd-size cap and a little extra room.
+name = Large shed (herd capped at 120)
+description = 4 × 2.5 × 2.2 m shed, +25% floor space, at most 120 rabbits
+objective = max_meat
+
+width_m = 4
+depth_m = 2.5
+height_m = 2.2
+access_both_sides = true
+
+constraint.qol = min 1.25
+constraint.max_headcount = max 120
