@@ -4,6 +4,7 @@ import type { SolveView } from "../api/types";
 import { fmtNum, num, render, trim1 } from "../format";
 import { busy, go, meta, removeConstraint, request, setLimit, setObjective, solution } from "../state";
 import { ControlRow, CostLine } from "./Controls";
+import { Hutch } from "./Hutch";
 import { NumberBox, Range } from "./Slider";
 
 const OBJ_LABEL: Record<string, string> = { max_meat: "Most meat", max_qol: "Most room" };
@@ -172,35 +173,6 @@ function HeadcountCard() {
   );
 }
 
-function Rabbit(props: { kind: "doe" | "buck" | "young"; size: number }) {
-  return (
-    <svg class={`rabbit ${props.kind}`} width={props.size} height={(props.size * 30) / 26} viewBox="0 0 26 30" aria-hidden="true">
-      <Show
-        when={props.kind !== "young"}
-        fallback={
-          <>
-            <ellipse cx="9" cy="9" rx="2.4" ry="6.5" />
-            <ellipse cx="17" cy="9" rx="2.4" ry="6.5" />
-            <ellipse cx="13" cy="21" rx="9" ry="8" />
-          </>
-        }
-      >
-        <ellipse class="body" cx="9" cy="8" rx="2.6" ry="7.5" transform="rotate(-10 9 8)" />
-        <ellipse class="body" cx="17" cy="8" rx="2.6" ry="7.5" transform="rotate(10 17 8)" />
-        <Show when={props.kind === "doe"}>
-          <ellipse class="ear" cx="9.1" cy="8.5" rx="1" ry="5" transform="rotate(-10 9 8)" />
-          <ellipse class="ear" cx="16.9" cy="8.5" rx="1" ry="5" transform="rotate(10 17 8)" />
-        </Show>
-        <ellipse class="body" cx="13" cy="21" rx="9" ry="8" />
-        <circle class="eye" cx="10" cy="20" r="1" />
-        <circle class="eye" cx="16" cy="20" r="1" />
-      </Show>
-    </svg>
-  );
-}
-
-const MAX_GLYPHS = 120;
-
 function HerdCard(props: { s: SolveView }) {
   const p = () => props.s.params;
   const does = () => num(p().does);
@@ -226,7 +198,7 @@ function HerdCard(props: { s: SolveView }) {
       <div>
         <h1>Here's your herd</h1>
         <p class="lede">
-          On a typical day, in {props.s.layout.tiers} tier{props.s.layout.tiers === 1 ? "" : "s"} of cages.
+          {does()} doe{does() === 1 ? "" : "s"}, {bucks()} buck{bucks() === 1 ? "" : "s"} and about {young()} kits and growers on a typical day.
         </p>
       </div>
       <Show when={props.s.violations.length > 0}>
@@ -250,30 +222,7 @@ function HerdCard(props: { s: SolveView }) {
           </div>
         }
       >
-        <div class="flock">
-          <div class="grp">
-            <div class="glyphs">
-              <For each={Array.from({ length: Math.min(does(), 24) })}>{() => <Rabbit kind="doe" size={44} />}</For>
-            </div>
-            <div class="grp-l">
-              {does()} doe{does() === 1 ? "" : "s"}
-            </div>
-          </div>
-          <div class="grp">
-            <div class="glyphs">
-              <For each={Array.from({ length: Math.min(bucks(), 3) })}>{() => <Rabbit kind="buck" size={44} />}</For>
-            </div>
-            <div class="grp-l">
-              {bucks()} buck{bucks() === 1 ? "" : "s"}
-            </div>
-          </div>
-          <div class="grp grow">
-            <div class="glyphs small">
-              <For each={Array.from({ length: Math.min(young(), MAX_GLYPHS) })}>{() => <Rabbit kind="young" size={16} />}</For>
-            </div>
-            <div class="grp-l">About {young()} kits and growers</div>
-          </div>
-        </div>
+        <Hutch s={props.s} />
         <div class="tiles">
           <div class="tile blue" data-tip={tip("meat_kg_per_yr", "kg", 0)}>
             <div class="tv">{fmtNum(met("meat_kg_per_yr"), 0)} kg</div>
@@ -303,7 +252,6 @@ function HerdCard(props: { s: SolveView }) {
           </Show>
         </p>
       </Show>
-      <div class="grass" aria-hidden="true" />
     </section>
   );
 }

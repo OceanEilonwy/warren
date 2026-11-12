@@ -68,7 +68,10 @@ web/             Solid 2 + Vite + TypeScript
   src/state.ts   the request is the state; "latest wins" solving; cost lines
   src/components App (shell), Front (space, what matters, headcount cap, the herd), More (other
                  constraints as questions), Workings (Code checks, plan detail, assumptions, examples),
-                 Controls, Results (detail cards), Chart, Slider
+                 Controls, Results (detail cards), Chart, Slider, Hutch (3D | Plan), BuildPlan
+  src/hutch/     scene.ts: the 3D hutch (three.js, loaded on demand)
+  src/assets/    rabbit.glb, built by blender/rabbit.py
+  blender/       rabbit.py: the rabbit, modelled, rigged and animated procedurally
 presets/         shipped presets (*.txt), read live by the server and built into the WASM
 scripts/         build-wasm.sh
 ```
@@ -99,7 +102,14 @@ Three screens (the URL hash keeps the back button working):
 
 - **Your herd** (front): your space; what matters more (most meat, with a "room for every rabbit" slider
   that sets a floor-space minimum, or most room); and "Is there a most you can look after at once?" (a
-  headcount cap). Beside them, the herd drawn as rabbits with meat a year, rabbits a year and cost per kg.
+  headcount cap). Beside them, the hutch and meat a year, rabbits a year and cost per kg. The hutch has
+  two views:
+  - **3D** (default): the plan's cages in their tiers, standing on the floor, with a typical day's rabbits
+    hopping about, looking round and sitting up. Under each rabbit a dashed outline shows the floor the
+    WA Code requires for it (0.07 m² to 12 weeks, 0.18 m² after; the doe and litter share 0.56–0.74 m²; a
+    buck 0.56 m²). Drag to turn, scroll to zoom; the top tier can be lifted to look in.
+  - **Plan**: a build sheet: each tier and row to scale with every cage's inside size in cm, how the tiers
+    stack, a cage list with what each legally holds, and a parts list.
 - **Anything else to keep in mind?** Every other optimisable input (`engine::Var`) and result
   (`engine::Out`) as a question: "Let Warren pick" or your own *exactly* / *at least* / *at most* value.
   Each answer shows what it costs in the objective (the solver re-plans without it).
@@ -108,6 +118,18 @@ Three screens (the URL hash keeps the back button working):
   the model works.
 
 Nothing is constrained to start with.
+
+## The rabbit model
+
+`web/src/assets/rabbit.glb` is generated, not drawn: `web/blender/rabbit.py` builds the body from a
+skeleton of blended ellipsoids (fused by a voxel remesh), adds spoon-shaped ears and eyes, bakes shading
+into vertex colours, rigs it and keys four animations (Hop, Idle, Look, SitUp). Rebuild it with Blender 5:
+
+```sh
+blender --background --python web/blender/rabbit.py -- web/src/assets/rabbit.glb [preview-prefix]
+```
+
+The app adds the coat (a painted strand texture, bump, sheen and a soft rim) and moves the rabbits.
 
 ## Presets
 

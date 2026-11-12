@@ -41,7 +41,7 @@ export type CageRole = "empty" | "doe" | "doe_litter" | "buck" | "replacement" |
 export interface Cage { kind: CageKind; tier: number; row: number; x: number; w: number; d: number; area: number }
 export interface Layout {
   max_tiers: number; tiers: number; rows: number; row_depth: number; unused_depth: number;
-  doe_area: number; buck_area: number; cages: Cage[]; n_doe: number; n_buck: number; n_grow: number;
+  doe_area: number; doe_floor: number; buck_area: number; cages: Cage[]; n_doe: number; n_buck: number; n_grow: number;
   issues: string[]; feasible: boolean;
 }
 
@@ -57,7 +57,8 @@ export interface SolveView {
   floor_space_unlimited: boolean;
   metrics: Record<string, Stat>;
   layout: Layout;
-  snapshot: { role: CageRole; count: number }[];
+  /** What's in each cage on a typical day; `older` = growers 12 weeks or older. */
+  snapshot: { role: CageRole; count: number; older: number }[];
   series: { head: Series; growers: Series; cages: Series; meat: Series; cost: Series };
   eff_wean: number;
   eff_does: number;

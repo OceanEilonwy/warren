@@ -27,6 +27,9 @@ pub struct CageSnap {
     pub role: CageRole,
     /// Rabbits in the cage (for `DoeLitter`, the doe plus her kits).
     pub count: u32,
+    /// Of a `Growers` cage's rabbits, how many are 12 weeks or older (the Code's 0.18 m² group; the rest
+    /// are 5-12 weeks, 0.07 m²).
+    pub older: u32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -219,11 +222,13 @@ impl<'a> Sim<'a> {
     fn pack(&self, sc: &mut Scratch) -> Packed {
         let t = self.t;
         let n_c = self.l.n_cages();
-        let Scratch { role, cnt, free, tag, solos, items } = sc;
+        let Scratch { role, cnt, older, free, tag, solos, items } = sc;
         role.clear();
         role.resize(n_c, CageRole::Empty);
         cnt.clear();
         cnt.resize(n_c, 0);
+        older.clear();
+        older.resize(n_c, 0);
         free.clear();
         free.extend(self.l.cages.iter().map(|c| c.area));
         tag.clear();
@@ -313,6 +318,9 @@ impl<'a> Sim<'a> {
             let b = best.unwrap();
             free[b] -= req;
             cnt[b] += 1;
+            if age >= 84 {
+                older[b] += 1;
+            }
             if old {
                 tag[b] = Some(sex)
             }
@@ -332,6 +340,7 @@ struct Packed {
 struct Scratch {
     role: Vec<CageRole>,
     cnt: Vec<u32>,
+    older: Vec<u32>,
     free: Vec<f64>,
     tag: Vec<Option<Sex>>,
     solos: Vec<i32>,
@@ -341,7 +350,7 @@ struct Scratch {
 impl Scratch {
     /// What is in each cage after the last `pack`.
     fn snapshot(&self) -> Vec<CageSnap> {
-        self.role.iter().zip(&self.cnt).map(|(&role, &count)| CageSnap { role, count }).collect()
+        self.role.iter().zip(&self.cnt).zip(&self.older).map(|((&role, &count), &older)| CageSnap { role, count, older }).collect()
     }
 }
 
