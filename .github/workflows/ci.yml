@@ -5,15 +5,21 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
+  # The WASM build needs nightly (std rebuilt with atomics for threads); pinned to the version it was tested on.
+  WASM_TOOLCHAIN: nightly-2026-11-01
+  WASM_BINDGEN_VERSION: 0.2.130
 
 jobs:
   lint:
     name: Lint (rustfmt + clippy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -22,11 +28,80 @@ jobs:
       - run: cargo clippy --release --all-targets -- -D warnings
 
   test:
-    name: Tests
+    name: Rust tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --release
+
+  web:
+    name: Web UI (typecheck, unit tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  standalone:
+    name: Standalone build (Rust → WASM with threads)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.WASM_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+          components: rust-src, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-bindgen CLI
+        run: |
+          curl -sSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
+          echo "$PWD/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl" >> "$GITHUB_PATH"
+      - name: Clippy (WASM crate)
+        env:
+          RUSTFLAGS: -C target-feature=+atomics,+bulk-memory
+        run: cargo +${{ env.WASM_TOOLCHAIN }} clippy -p rabbitsim-wasm --target wasm32-unknown-unknown --release -Z build-std=panic_abort,std -- -D warnings
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run build:standalone
+        working-directory: web
+      # The standalone site, as the artifact GitHub Pages deploys (also downloadable from the run).
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/dist-standalone
+
+  pages:
+    name: Deploy to GitHub Pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, test, web, standalone]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5

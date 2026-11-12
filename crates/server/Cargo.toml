@@ -1,0 +1,21 @@
+[package]
+name = "rabbitsim-server"
+description = "HTTP JSON API (axum) for the meat rabbit planner, plus the built web UI"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "warren"
+path = "src/main.rs"
+
+[dependencies]
+rabbitsim.workspace = true
+rayon.workspace = true
+serde_json.workspace = true
+axum = "0.8.9"
+tokio = { version = "1.54.1", features = ["full"] }
+tower-http = { version = "0.7.1", features = ["fs"] }
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+tower = { version = "0.5.3", features = ["util"] }

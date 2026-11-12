@@ -1,0 +1,5 @@
+node_modules/
+dist/
+dist-standalone/
+src/wasm-pkg/
+public-standalone/coi-serviceworker.js

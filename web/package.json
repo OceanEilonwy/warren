@@ -1,0 +1,31 @@
+{
+  "name": "warren-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@solidjs/web": "2.0.0-rc.21",
+    "solid-js": "2.0.0-rc.21"
+  },
+  "devDependencies": {
+    "@solidjs/vite-plugin": "3.0.0-next.57",
+    "@types/node": "24.19.2",
+    "coi-serviceworker": "0.1.7",
+    "typescript": "7.0.2",
+    "vite": "8.3.8"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:standalone": "npm run wasm && npm run coi && vite --mode standalone",
+    "build": "vite build",
+    "build:standalone": "npm run wasm && npm run coi && vite build --mode standalone",
+    "preview:standalone": "vite preview --mode standalone",
+    "wasm": "../scripts/build-wasm.sh",
+    "coi": "node -e \"require('fs').copyFileSync('node_modules/coi-serviceworker/coi-serviceworker.js','public-standalone/coi-serviceworker.js')\"",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test src/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

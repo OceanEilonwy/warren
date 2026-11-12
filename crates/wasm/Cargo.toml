@@ -1,0 +1,14 @@
+[package]
+name = "rabbitsim-wasm"
+description = "The planner's API compiled to WebAssembly, with rayon running on Web Workers"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rabbitsim.workspace = true
+serde_json.workspace = true
+wasm-bindgen = "=0.2.130"
+wasm-bindgen-rayon = "1.3.0"
