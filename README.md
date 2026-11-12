@@ -66,7 +66,9 @@ crates/wasm/     wasm-bindgen: call(method, body) and initThreadPool(n)
 web/             Solid 2 + Vite + TypeScript
   src/api/       types, client (HTTP or WASM), wasm (worker bridge), worker (owns the WASM instance)
   src/state.ts   the request is the state; "latest wins" solving; cost lines
-  src/components App, Sidebar, Results, Chart, Slider
+  src/components App (shell), Front (space, what matters, headcount cap, the herd), More (other
+                 constraints as questions), Workings (Code checks, plan detail, assumptions, examples),
+                 Controls, Results (detail cards), Chart, Slider
 presets/         shipped presets (*.txt), read live by the server and built into the WASM
 scripts/         build-wasm.sh
 ```
@@ -93,17 +95,19 @@ takes its default and everything is clamped to the slider ranges; replies carry 
 
 ## Model of the UI
 
-- **Objective:** maximise meat, or maximise floor space (QoL) while meeting result limits (switching to it
-  suggests a meat and a herd minimum).
-- **Fixed inputs** (not optimised, sensible defaults pre-loaded): the space (always shown) and an
-  "Assumptions" section (feed and stock prices, biology, housing details, simulation settings; costs are
-  reported, not optimised).
-- **Optimisable inputs** (`engine::Var`): floor space per cage type (+ an "all cages" shorthand), herd cap,
-  tiers, grower cage width, does, bucks, weaning age, re-mating interval, butchering rule and age.
-  Unconstrained ones are chosen by the solver.
-- **Constraints:** "+ Constraint" adds any optimisable input or result (`engine::Out`) as *exactly*,
-  *at least* or *at most*. Nothing is constrained to start with. Each constraint shows what it
-  costs in the objective (the solver re-plans without it).
+Three screens (the URL hash keeps the back button working):
+
+- **Your herd** (front): your space; what matters more (most meat, with a "room for every rabbit" slider
+  that sets a floor-space minimum, or most room); and "Is there a most you can look after at once?" (a
+  headcount cap). Beside them, the herd drawn as rabbits with meat a year, rabbits a year and cost per kg.
+- **Anything else to keep in mind?** Every other optimisable input (`engine::Var`) and result
+  (`engine::Out`) as a question: "Let Warren pick" or your own *exactly* / *at least* / *at most* value.
+  Each answer shows what it costs in the objective (the solver re-plans without it).
+- **The workings:** Code of Practice checks, the full plan, every figure, the cage layout, weekly charts,
+  the assumptions (fixed inputs: prices, biology, housing, simulation), example presets, save/open, and how
+  the model works.
+
+Nothing is constrained to start with.
 
 ## Presets
 

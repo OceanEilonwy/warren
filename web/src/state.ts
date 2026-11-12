@@ -107,6 +107,25 @@ async function refreshCosts(r: WireRequest, gen: number) {
   else for (const k of keys) await one(k);
 }
 
+// ---------------- screens ----------------
+
+/** Which screen is showing; kept in the URL hash so the back button works. */
+export type View = "herd" | "more" | "workings";
+const viewFromHash = (): View => {
+  const h = location.hash.slice(1);
+  return h === "more" || h === "workings" ? h : "herd";
+};
+export const [view, setViewSignal] = createSignal<View>(viewFromHash());
+window.addEventListener("hashchange", () => setViewSignal(viewFromHash()));
+window.addEventListener("popstate", () => setViewSignal(viewFromHash()));
+export function go(v: View) {
+  if (v === viewFromHash()) return;
+  if (v === "herd") history.pushState(null, "", location.pathname + location.search);
+  else location.hash = v;
+  setViewSignal(v);
+  window.scrollTo(0, 0);
+}
+
 // ---------------- start-up ----------------
 
 export async function start() {
@@ -140,6 +159,16 @@ export function setConstraint(key: string, patch: Partial<Pick<Constraint, "op" 
 
 export function setConstraintOp(key: string, op: Op) {
   setConstraint(key, { op });
+}
+
+/** Set a constraint directly (adding it if missing), without asking the API to anchor it. */
+export function setLimit(key: string, op: Op, value: number, slider = false) {
+  update((r) => {
+    const has = r.constraints.some((c) => c.key === key);
+    const constraints = has ? r.constraints.map((c) => (c.key === key ? { ...c, op, value } : c)) : [...r.constraints, { key, op, value }];
+    return { ...r, constraints };
+  });
+  replan(slider ? 250 : 0);
 }
 
 export function removeConstraint(key: string) {

@@ -1,4 +1,4 @@
-// The results panel: warnings, the plan, headline figures, the cage layout and the weekly charts.
+// The detail cards shown in "The workings": the plan, every figure, the cage layout and the weekly charts.
 import { For, Show } from "solid-js";
 import type { CageKind, CageRole, SolveView, VarMeta } from "../api/types";
 import { fmtNum, num, trim1, valueText } from "../format";
@@ -26,7 +26,6 @@ const KIND_LABEL: Record<CageKind, string> = { doe: "doe cage", buck: "buck cage
 
 interface StatDef {
   key: string;
-  icon: string;
   label: string;
   unit: string;
   dp: number;
@@ -38,52 +37,31 @@ const THEMES: [string, StatDef[]][] = [
   [
     "Meat",
     [
-      { key: "meat_kg_per_yr", icon: "🥩", label: "Dressed meat", unit: "kg/yr", dp: 0 },
-      { key: "fryers_per_yr", icon: "🍖", label: "Rabbits butchered", unit: "/yr", dp: 0 },
-      { key: "butcher_age_wk", icon: "📅", label: "Age at butchering", unit: "wk", dp: 1 },
-      { key: "forced_per_yr", icon: "⚠️", label: "Butchered early (no room)", unit: "/yr", dp: 1 },
+      { key: "meat_kg_per_yr", label: "Dressed meat", unit: "kg/yr", dp: 0 },
+      { key: "fryers_per_yr", label: "Rabbits butchered", unit: "/yr", dp: 0 },
+      { key: "butcher_age_wk", label: "Age at butchering", unit: "wk", dp: 1 },
+      { key: "forced_per_yr", label: "Butchered early (no room)", unit: "/yr", dp: 1 },
     ],
   ],
   [
     "Food",
     [
-      { key: "pellet_kg_per_yr", icon: "🌾", label: "Pellets", unit: "kg/yr", dp: 0 },
-      { key: "hay_kg_per_yr", icon: "🌿", label: "Hay", unit: "kg/yr", dp: 0 },
-      { key: "feed_cost_per_yr", icon: "💵", label: "Feed cost", unit: "/yr", dp: 0, money: true },
-      { key: "cost_per_kg", icon: "⚖️", label: "Cost per kg of meat", unit: "/kg", dp: 2, money: true },
+      { key: "pellet_kg_per_yr", label: "Pellets", unit: "kg/yr", dp: 0 },
+      { key: "hay_kg_per_yr", label: "Hay", unit: "kg/yr", dp: 0 },
+      { key: "feed_cost_per_yr", label: "Feed cost", unit: "/yr", dp: 0, money: true },
+      { key: "cost_per_kg", label: "Cost per kg of meat", unit: "/kg", dp: 2, money: true },
     ],
   ],
   [
     "Herd",
     [
-      { key: "peak_head", icon: "🐇", label: "Peak rabbits on hand", unit: "", dp: 0 },
-      { key: "cage_use", icon: "🏠", label: "Cages in use", unit: "%", dp: 0, scale: 100 },
+      { key: "peak_head", label: "Peak rabbits on hand", unit: "", dp: 0 },
+      { key: "cage_use", label: "Cages in use", unit: "%", dp: 0, scale: 100 },
     ],
   ],
 ];
 
-function Notes(props: { s: SolveView }) {
-  return (
-    <div id="lever-diff">
-      <Show when={props.s.violations.length > 0}>
-        <div class="warn">
-          <strong>! These constraints can't all be met</strong> (closest plan shown):
-          <ul>
-            <For each={props.s.violations}>{(v) => <li>{v}</li>}</For>
-          </ul>
-        </div>
-      </Show>
-      <Show when={props.s.forced_share > 0.03}>
-        <div class="warn">
-          <strong>! This plan doesn't fit:</strong> {(props.s.forced_share * 100).toFixed(0)}% of rabbits are butchered early because the cages are
-          full. The figures assume you do that; consider the "when room is needed" rule, fewer does or a younger butchering age.
-        </div>
-      </Show>
-    </div>
-  );
-}
-
-function PlanCard(props: { s: SolveView }) {
+export function PlanCard(props: { s: SolveView }) {
   const m = meta()!;
   const p = () => props.s.params;
   const varMeta = (k: string) => m.vars.find((v) => v.key === k) as VarMeta;
@@ -95,8 +73,8 @@ function PlanCard(props: { s: SolveView }) {
   const mark = (k: string) => {
     const own = cons().find((c) => c.key === k);
     const qolType = ["qol_doe", "qol_buck", "qol_young", "qol_old"].includes(k);
-    if (own?.op === "eq") return <span class="pin" data-tip="Pinned by you">🔒</span>;
-    if (own || (qolType && cons().some((c) => c.key === "qol"))) return <span class="lim" data-tip="Within a limit you set">↕</span>;
+    if (own?.op === "eq") return <span class="pin" data-tip="Set exactly by you">set</span>;
+    if (own || (qolType && cons().some((c) => c.key === "qol"))) return <span class="lim" data-tip="Within a limit you set">limit</span>;
     return null;
   };
   const row = (label: string, k: string | null, text: string) => (
@@ -169,7 +147,7 @@ function PlanCard(props: { s: SolveView }) {
   );
 }
 
-function StatsCard(props: { s: SolveView }) {
+export function StatsCard(props: { s: SolveView }) {
   return (
     <section class="card stats">
       <For each={THEMES}>
@@ -186,9 +164,6 @@ function StatsCard(props: { s: SolveView }) {
                     `${it.label}: ${cash}${fmtNum(st().mean * sc, it.dp)} ${it.unit}\n80% of runs fall between ${cash}${fmtNum(st().p10 * sc, it.dp)} and ${cash}${fmtNum(st().p90 * sc, it.dp)}`;
                   return (
                     <div class="stat" data-tip={tip()}>
-                      <span class="ico" aria-hidden="true">
-                        {it.icon}
-                      </span>
                       <span class="sv">
                         {cash}
                         {fmtNum(st().mean * sc, it.dp)}
@@ -207,7 +182,7 @@ function StatsCard(props: { s: SolveView }) {
   );
 }
 
-function LayoutCard(props: { s: SolveView }) {
+export function LayoutCard(props: { s: SolveView }) {
   const l = () => props.s.layout;
   const p = () => props.s.params;
   const geo = () => {
@@ -381,7 +356,7 @@ function LayoutCard(props: { s: SolveView }) {
   );
 }
 
-function Charts(props: { s: SolveView }) {
+export function Charts(props: { s: SolveView }) {
   const s = () => props.s.series;
   return (
     <div class="charts">
@@ -433,27 +408,5 @@ function Charts(props: { s: SolveView }) {
         </section>
       </div>
     </div>
-  );
-}
-
-export function Results(props: { s: SolveView }) {
-  const empty = () => !props.s.layout.feasible || props.s.eff_does === 0;
-  return (
-    <>
-      <Notes s={props.s} />
-      <Show when={empty()}>
-        <div id="infeasible-msg">
-          <strong>No production possible with this cage layout.</strong> {props.s.layout.issues.join(" ")}
-        </div>
-      </Show>
-      <Show when={!empty()}>
-        <PlanCard s={props.s} />
-        <StatsCard s={props.s} />
-      </Show>
-      <LayoutCard s={props.s} />
-      <Show when={!empty()}>
-        <Charts s={props.s} />
-      </Show>
-    </>
   );
 }
