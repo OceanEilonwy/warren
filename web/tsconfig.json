@@ -21,7 +21,13 @@
       "vite/client",
       "node"
     ],
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "rabbitsim-wasm": [
+        "./src/wasm-pkg/rabbitsim_wasm",
+        "./src/wasm-stub/index.d.ts"
+      ]
+    }
   },
   "include": [
     "src",

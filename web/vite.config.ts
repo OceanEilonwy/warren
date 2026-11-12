@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import solid from "@solidjs/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 
@@ -23,6 +24,8 @@ export default defineConfig(({ mode }) => {
     base: standalone ? "./" : "/",
     publicDir: standalone ? "public-standalone" : false,
     build: { outDir: standalone ? "dist-standalone" : "dist", target: "es2022", emptyOutDir: true },
+    // the generated bindings (scripts/build-wasm.sh); tsconfig falls back to a stub for type checks
+    resolve: { alias: { "rabbitsim-wasm": fileURLToPath(new URL("./src/wasm-pkg/rabbitsim_wasm.js", import.meta.url)) } },
     worker: { format: "es" },
     optimizeDeps: { exclude: ["./src/wasm-pkg"] },
     server: {

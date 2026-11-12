@@ -83,6 +83,9 @@ jobs:
         working-directory: web
       - run: npm run build:standalone
         working-directory: web
+      - name: Typecheck against the generated bindings (not the stub)
+        run: npm run typecheck
+        working-directory: web
       # The standalone site, as the artifact GitHub Pages deploys (also downloadable from the run).
       - uses: actions/upload-pages-artifact@v5
         with:

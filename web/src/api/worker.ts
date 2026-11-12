@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // Owns the WebAssembly planner. Starts a rayon thread pool (one worker per core) once, then answers
 // `{id, method, body}` messages with `{id, ok}` or `{id, err}`.
-import init, { call, initThreadPool } from "../wasm-pkg/rabbitsim_wasm.js";
+import init, { call, initThreadPool } from "rabbitsim-wasm";
 
 const ready = (async () => {
   await init();
