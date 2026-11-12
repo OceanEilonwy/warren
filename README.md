@@ -102,7 +102,7 @@ takes its default and everything is clamped to the slider ranges; replies carry 
   tiers, grower cage width, does, bucks, weaning age, re-mating interval, butchering rule and age.
   Unconstrained ones are chosen by the solver.
 - **Constraints:** "+ Constraint" adds any optimisable input or result (`engine::Out`) as *exactly*,
-  *at least* or *at most*. Starting constraints: one QoL and the herd cap. Each constraint shows what it
+  *at least* or *at most*. Nothing is constrained to start with. Each constraint shows what it
   costs in the objective (the solver re-plans without it).
 
 ## Presets

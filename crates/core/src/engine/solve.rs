@@ -54,8 +54,12 @@ fn has_herd(s: &Summary) -> bool {
     s.layout.feasible && s.eff_does > 0
 }
 
+/// Candidates are judged on a small sample, so the search aims a little under `MAX_FORCED_SHARE`; otherwise
+/// a plan that just passes on the sample can come out just over the limit in the full report.
+const FORCED_SEARCH_TARGET: f64 = 0.025;
+
 fn forced_excess(s: &Summary) -> f64 {
-    (s.forced_share() - MAX_FORCED_SHARE).max(0.0) * 10.0 + if has_herd(s) { 0.0 } else { NO_HERD_PENALTY }
+    (s.forced_share() - FORCED_SEARCH_TARGET).max(0.0) * 10.0 + if has_herd(s) { 0.0 } else { NO_HERD_PENALTY }
 }
 
 /// Candidates are scored on short, small samples, so aim a little inside each result limit; the final

@@ -599,8 +599,8 @@ impl Default for Request {
         Request {
             objective: Objective::MaxMeat,
             params: Params::default(),
-            // the starting constraints: one QoL and a herd cap (0 = none)
-            vars: vec![(Var::Qol, Bound::at_least(1.0)), (Var::MaxHeadcount, Bound::at_most(0.0))],
+            // start with nothing constrained: the solver chooses everything
+            vars: Vec::new(),
             outs: Vec::new(),
         }
     }
@@ -1000,10 +1000,9 @@ mod tests {
     }
 
     #[test]
-    fn default_request_has_one_qol_and_a_herd_cap_only() {
+    fn default_request_has_no_constraints() {
         let r = Request::default();
-        assert_eq!(r.vars.iter().map(|(v, _)| *v).collect::<Vec<_>>(), vec![Var::Qol, Var::MaxHeadcount]);
-        assert!(r.outs.is_empty());
+        assert!(r.vars.is_empty() && r.outs.is_empty());
         assert_eq!(r.objective, Objective::MaxMeat);
         assert_eq!(Request::from_wire(&r.to_wire()), r, "wire round trip");
     }
@@ -1131,6 +1130,8 @@ mod tests {
     #[test]
     fn has_and_remove_cover_vars_and_outs() {
         let mut r = Request::default();
+        r.vars.push((Var::Qol, Bound::at_least(1.0)));
+        r.vars.push((Var::MaxHeadcount, Bound::at_most(0.0)));
         r.outs.push((Out::PeakHead, Bound::at_most(40.0)));
         assert!(r.has("qol") && r.has("peak_head") && !r.has("does"));
         r.remove("peak_head");

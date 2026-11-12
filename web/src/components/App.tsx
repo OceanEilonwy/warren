@@ -1,5 +1,6 @@
 // Page shell: progress bar and status, header with the Code of Practice badge and Help, sidebar, results.
 import { createEffect, For, Show } from "solid-js";
+import logo from "../logo.svg";
 import { busy, costing, error, fatal, meta, solution } from "../state";
 import { hideTip } from "../tooltip";
 import { Results } from "./Results";
@@ -175,9 +176,12 @@ export function App() {
     <>
       <Status />
       <header class="top">
-        <div>
-          <h1>NZ White meat rabbit planner</h1>
-          <p class="tag">Plan a small meat-rabbit herd that fits your space and the WA Code.</p>
+        <div class="brand">
+          <img src={logo} alt="" width="44" height="44" />
+          <div>
+            <h1>Warren</h1>
+            <p class="tag">NZ White meat-rabbit planner: a herd that fits your space and the WA Code of Practice.</p>
+          </div>
         </div>
         <div class="top-actions">
           <CodeBadge open={() => codeDlg?.showModal()} />

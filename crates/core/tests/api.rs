@@ -56,7 +56,7 @@ fn meta_describes_every_input_constraint_and_objective() {
     assert_eq!(rule["kind"]["type"], "choice");
     assert_eq!(m["outs"].as_array().unwrap().len(), 3);
     assert_eq!(m["objectives"].as_array().unwrap().len(), 2);
-    assert_eq!(keys(&m["defaults"]), ["qol", "max_headcount"]);
+    assert!(keys(&m["defaults"]).is_empty(), "nothing is constrained to start with");
     assert_eq!(m["defaults"]["objective"], "max_meat");
     // tiers is an optimisable input, not part of the space
     assert!(!space.contains(&"tiers") && vars.iter().any(|v| v["key"] == "tiers"));
@@ -103,7 +103,7 @@ fn adding_a_constraint_anchors_it_on_the_current_plan() {
     let a = api();
     let v = call(&a, "solve", j!({ "request": base() }));
     let r = call(&a, "add_constraint", j!({ "request": base(), "key": "does" }))["request"].clone();
-    assert_eq!(keys(&r), ["qol", "max_headcount", "does"]);
+    assert_eq!(keys(&r), ["does"]);
     let c = r["constraints"].as_array().unwrap().iter().find(|c| c["key"] == "does").unwrap().clone();
     assert_eq!(c["op"], "eq");
     assert_eq!(c["value"].as_f64(), v["params"]["does"].as_f64(), "pinned at what the plan already uses");
@@ -128,7 +128,7 @@ fn switching_to_max_floor_space_suggests_meat_and_herd_minimums() {
     assert!(call(&a, "solve", j!({ "request": r }))["floor_space_unlimited"].as_bool().unwrap());
     // back to max meat leaves the constraints alone
     let back = call(&a, "set_objective", j!({ "request": base(), "objective": "max_meat" }))["request"].clone();
-    assert_eq!(keys(&back), ["qol", "max_headcount"]);
+    assert!(keys(&back).is_empty());
 }
 
 #[test]
