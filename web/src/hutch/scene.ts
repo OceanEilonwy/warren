@@ -52,10 +52,11 @@ export interface Hutch {
 /** WA Code of Practice, Section 3, m². */
 const CODE = { young: 0.07, older: 0.18, breeder: 0.56 };
 const LIFT = 0.32;
+/** Mid-tone floors so the white rabbits stand out; light dashed outlines that read on them. */
 const COLOURS = {
-  doe: { floor: "#fbe3ec", line: "#c2456f" },
-  buck: { floor: "#dcebfb", line: "#2f6fbf" },
-  grow: { floor: "#f3eadc", line: "#8a6a43" },
+  doe: { floor: "#b9607d", line: "#ffe3ec" },
+  buck: { floor: "#4a78b5", line: "#e1edff" },
+  grow: { floor: "#a07a4f", line: "#fff0d8" },
 };
 /** Body length of each kind of rabbit, metres (an NZ White doe is about 45 cm). */
 const LENGTH = { doe: 0.45, buck: 0.48, older: 0.38, young: 0.29, kit: 0.15 };
@@ -85,72 +86,22 @@ interface Bunny {
   dur: number;
   outline: THREE.Object3D | null;
   shadow: THREE.Mesh;
+  /** Footprint radius (m): no other rabbit's spot, or landing spot, comes closer than the two radii. */
+  r: number;
+  /** In a narrow cell the rabbit keeps to its long axis and only turns end to end; otherwise null. */
+  axis: number | null;
   next: () => [number, number] | null;
 }
 
 /** The rabbit's hop clip leaves the ground at about 20% and lands at about 80% of its length. */
 const HOP_LIFT = [0.2, 0.8] as const;
 
-function roundedRect(w: number, d: number, r: number): THREE.Vector3[] {
-  const pts: THREE.Vector3[] = [];
-  const rr = Math.min(r, w / 2, d / 2);
-  const corners: [number, number, number][] = [
-    [w / 2 - rr, d / 2 - rr, 0],
-    [-w / 2 + rr, d / 2 - rr, Math.PI / 2],
-    [-w / 2 + rr, -d / 2 + rr, Math.PI],
-    [w / 2 - rr, -d / 2 + rr, (3 * Math.PI) / 2],
-  ];
-  for (const [cx, cz, a0] of corners) for (let i = 0; i <= 6; i++) {
-    const a = a0 + (i / 6) * (Math.PI / 2);
-    pts.push(new THREE.Vector3(cx + Math.cos(a) * rr, 0, cz + Math.sin(a) * rr));
-  }
-  return pts;
-}
-
-/** A dashed outline enclosing `area` m², shaped like `aspect` (width / depth). */
+/** A dashed rectangle enclosing exactly `area` m², with the proportions `aspect` (width / depth). */
 function outline(area: number, aspect: number, colour: string): THREE.LineLoop {
   const d = Math.sqrt(area / aspect);
   const w = area / d;
-  const g = new THREE.BufferGeometry().setFromPoints(roundedRect(w, d, Math.min(w, d) * 0.18));
-  const line = new THREE.LineLoop(g, new THREE.LineDashedMaterial({ color: colour, dashSize: 0.025, gapSize: 0.018, transparent: true, opacity: 0.95 }));
-  line.computeLineDistances();
-  line.renderOrder = 2;
-  return line;
-}
-
-/**
- * A dashed outline that follows a cage floor (minus the nest box, which sits in a corner), inset evenly
- * until it encloses exactly `area` m²: the Code minimum shown inside the cage it applies to.
- */
-function floorOutline(
-  x0: number,
-  x1: number,
-  z0: number,
-  z1: number,
-  nest: { x0: number; z0: number; z1: number; atBack: boolean } | null,
-  area: number,
-  colour: string,
-): THREE.LineLoop {
-  const shape = (m: number) => {
-    const ax0 = x0 + m, ax1 = x1 - m, az0 = z0 + m, az1 = z1 - m;
-    if (!nest) return { pts: [[ax0, az0], [ax1, az0], [ax1, az1], [ax0, az1]], a: (ax1 - ax0) * (az1 - az0) };
-    const cx = nest.x0 - m;
-    if (nest.atBack) {
-      // nest box in the (x1, z0) corner
-      const cz = nest.z1 + m;
-      return { pts: [[ax0, az0], [cx, az0], [cx, cz], [ax1, cz], [ax1, az1], [ax0, az1]], a: (ax1 - ax0) * (az1 - az0) - (ax1 - cx) * (cz - az0) };
-    }
-    const cz = nest.z0 - m;
-    return { pts: [[ax0, az0], [ax1, az0], [ax1, cz], [cx, cz], [cx, az1], [ax0, az1]], a: (ax1 - ax0) * (az1 - az0) - (ax1 - cx) * (az1 - cz) };
-  };
-  let lo = 0.01, hi = Math.min(x1 - x0, z1 - z0) / 2 - 0.01;
-  if (shape(lo).a > area) for (let i = 0; i < 40; i++) {
-    const mid = (lo + hi) / 2;
-    if (shape(mid).a > area) lo = mid;
-    else hi = mid;
-  }
-  const g = new THREE.BufferGeometry().setFromPoints(shape(lo).pts.map(([x, z]) => new THREE.Vector3(x, 0, z)));
-  const line = new THREE.LineLoop(g, new THREE.LineDashedMaterial({ color: colour, dashSize: 0.03, gapSize: 0.02 }));
+  const pts = [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]].map(([x, z]) => new THREE.Vector3(x, 0, z));
+  const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineDashedMaterial({ color: colour, dashSize: 0.025, gapSize: 0.018 }));
   line.computeLineDistances();
   line.renderOrder = 2;
   return line;
@@ -486,12 +437,36 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
       const m = 0.05;
       const bx0 = c.x + m, bx1 = c.x + c.w - m, bz0 = zMin + m, bz1 = zMin + rd - m;
       const clear = (x: number, z: number, r: number) => !nest || x + r < nest.x0 - 0.02 || z + r < nest.z0 - 0.02 || z - r > nest.z1 + 0.02;
-      const spotIn = (r: number): [number, number] => {
-        for (let i = 0; i < 40; i++) {
-          const x = rand(bx0 + r, bx1 - r), z = rand(bz0 + r, bz1 - r);
-          if (clear(x, z, r)) return [x, z];
+      // everyone in this cage, so nobody lands on (or starts on) anyone else
+      const mates: Bunny[] = [];
+      const free = (x: number, z: number, r: number, self: Bunny | null) =>
+        mates.every((o) => o === self || (Math.hypot(o.x - x, o.z - z) >= r + o.r && Math.hypot(o.tx - x, o.tz - z) >= r + o.r));
+      /** A clear spot for a rabbit of radius r: near (x, z) if given, else anywhere on the free floor. */
+      const pick = (r: number, self: Bunny | null, near?: [number, number, number]): [number, number] | null => {
+        for (let i = 0; i < 80; i++) {
+          let x: number, z: number;
+          if (near && i < 60) {
+            const a = rand(0, Math.PI * 2), d = rand(r * 0.8, near[2]);
+            x = near[0] + Math.cos(a) * d;
+            z = near[1] + Math.sin(a) * d;
+          } else {
+            x = rand(bx0 + r, bx1 - r);
+            z = rand(bz0 + r, bz1 - r);
+          }
+          if (x < bx0 + r - m * 0.6 || x > bx1 - r + m * 0.6 || z < bz0 + r - m * 0.6 || z > bz1 - r + m * 0.6) continue;
+          if (clear(x, z, r) && free(x, z, r, self)) return [x, z];
         }
-        return [cx, cz];
+        return null;
+      };
+      /** A roaming rabbit (doe, kits, buck): starts on a clear spot, hops to clear spots nearby. */
+      const roam = (len: number, home?: [number, number, number]) => {
+        const r = len * 0.42;
+        const at = (home && pick(r, null, home)) ?? pick(r, null) ?? [cx, cz];
+        const b = add(len, at, () => null, 0, 1);
+        b.r = r;
+        b.next = () => (home && Math.random() < 0.7 ? pick(r, b, [home[0], home[1], home[2]]) : null) ?? pick(r, b, [b.x, b.z, Math.max(0.12, len * 1.2)]);
+        mates.push(b);
+        return b;
       };
       const add = (len: number, at: [number, number], next: Bunny["next"], area: number, aspect: number) => {
         const obj = cloneSkinned(model);
@@ -520,7 +495,7 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
           obj, mixer, acts, current: acts.Idle, len, kit,
           x: at[0], z: at[1], fx: at[0], fz: at[1], tx: at[0], tz: at[1],
           heading, fromHeading: heading, toHeading: heading,
-          state: "idle", t: 0, dur: rand(0.5, 4), outline: null, shadow, next,
+          state: "idle", t: 0, dur: rand(0.5, 4), outline: null, shadow, next, r: len * 0.42, axis: null,
         };
         if (area > 0) {
           b.outline = outline(area, aspect, col.line);
@@ -537,27 +512,20 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
       if (c.role === "doe" || c.role === "doe_litter") {
         // the doe and her litter share the Code area for a doe + litter: one outline, following the floor
         // around the nest box
-        const shared = floorOutline(c.x, c.x + c.w, zMin, zMin + rd, nest && { x0: nest.x0, z0: nest.z0, z1: nest.z1, atBack: c.row === 0 }, d.doeArea, col.line);
-        shared.position.y = 0.006;
+        const shared = outline(d.doeArea, c.w / rd, col.line);
+        shared.position.set(cx, 0.006, cz);
         g.add(shared);
-        add(LENGTH.doe, spotIn(0.12), () => spotIn(0.12), 0, 1);
+        roam(LENGTH.doe);
+        // kits huddle by the nest box doorway, each on its own patch of floor
         const kits = c.role === "doe_litter" ? c.count - 1 : 0;
-        for (let k = 0; k < kits; k++) {
-          // kits huddle by the nest box doorway
-          const hx = nest ? nest.x0 - 0.06 : cx;
-          const hz = nest ? (nest.z0 + nest.z1) / 2 : cz;
-          const near = (): [number, number] => {
-            const a = rand(0, Math.PI * 2), r = rand(0.02, 0.18);
-            const x = Math.min(bx1, Math.max(bx0, hx - Math.abs(Math.cos(a)) * r)), z = Math.min(bz1, Math.max(bz0, hz + Math.sin(a) * r * 1.4));
-            return clear(x, z, 0.03) ? [x, z] : [hx - 0.08, hz];
-          };
-          add(LENGTH.kit, near(), near, 0, 1);
-        }
+        const hx = nest ? nest.x0 - 0.1 : cx;
+        const hz = nest ? (nest.z0 + nest.z1) / 2 : cz;
+        for (let k = 0; k < kits; k++) roam(LENGTH.kit, [hx, hz, 0.3]);
       } else if (c.role === "buck") {
-        const shared = floorOutline(c.x, c.x + c.w, zMin, zMin + rd, null, CODE.breeder, col.line);
-        shared.position.y = 0.006;
+        const shared = outline(CODE.breeder, c.w / rd, col.line);
+        shared.position.set(cx, 0.006, cz);
         g.add(shared);
-        add(LENGTH.buck, spotIn(0.12), () => spotIn(0.12), 0, 1);
+        roam(LENGTH.buck);
       } else if (c.role === "replacement" || c.role === "growers") {
         // each grower owns a floor cell at least its Code area. An even grid when everyone fits with
         // room to spare (then they hop between free cells); otherwise cells sized to each rabbit's area,
@@ -570,7 +538,8 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
         let bestScore = -Infinity;
         for (let cols = 1; cols <= 8; cols++) for (let rows = 1; rows <= 6; rows++) {
           const cells = cols * rows;
-          if (cells <= n || (fw / cols) * (fd / rows) + 1e-9 < Math.max(...areas)) continue;
+          const bodyMax = olderN > 0 ? LENGTH.older : LENGTH.young;
+          if (cells <= n || (fw / cols) * (fd / rows) + 1e-9 < Math.max(...areas) || Math.min(fw / cols, fd / rows) < bodyMax * 0.92) continue;
           const score = -Math.abs(Math.log(fw / cols / (fd / rows))) * 4 - Math.abs(cells - n - 2);
           if (score > bestScore) [bestScore, grid] = [score, [cols, rows]];
         }
@@ -618,8 +587,18 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
             mine = to;
             return [to.x, to.z];
           };
-          // the outline takes its cell's shape, a little inside it
-          add(isOld ? LENGTH.older : LENGTH.young, [cell.x, cell.z], next, areas[k], cell.w / cell.d);
+          // the outline is the rabbit's own Code area in the cage's proportions; in a narrow cell the rabbit
+          // lies along it, sized to fit
+          let len = isOld ? LENGTH.older : LENGTH.young;
+          const long = Math.max(cell.w, cell.d), short = Math.min(cell.w, cell.d);
+          if (!grid) len = Math.min(len, long * 0.92, short / 0.48);
+          const b = add(len, [cell.x, cell.z], next, areas[k], c.w / rd);
+          b.r = Math.min(cell.w, cell.d) / 2;
+          if (!grid) {
+            b.axis = cell.w >= cell.d ? 0 : Math.PI / 2;
+            b.heading = b.fromHeading = b.toHeading = b.axis + (Math.random() < 0.5 ? 0 : Math.PI);
+            b.obj.rotation.y = b.heading;
+          }
         }
       }
     });
@@ -684,7 +663,7 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
           [b.tx, b.tz] = to ?? [b.x, b.z];
           const dx = b.tx - b.x, dz = b.tz - b.z;
           b.fromHeading = b.heading;
-          b.toHeading = Math.hypot(dx, dz) > 0.01 ? angleTo(b.heading, Math.atan2(-dz, dx)) : b.heading + rand(-1.6, 1.6);
+          b.toHeading = Math.hypot(dx, dz) > 0.01 ? angleTo(b.heading, Math.atan2(-dz, dx)) : b.axis !== null ? b.heading + Math.PI : b.heading + rand(-1.6, 1.6);
           b.state = "turn";
           b.t = 0;
           b.dur = 0.22;
