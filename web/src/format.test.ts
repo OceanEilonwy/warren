@@ -19,6 +19,7 @@ test("values render like the Rust formatter", () => {
   assert.equal(render("qol", 1.5), "+50%");
   assert.equal(render("cap_or_none", 0), "no cap");
   assert.equal(render("money_per_kg", 1.5), "$1.50/kg");
+  assert.equal(render("sq_metres", 0.12), "0.12 m²");
   assert.equal(render("plain", 8), "8");
   assert.equal(render("plain", 8.5), "8.5");
   assert.equal(valueText({ type: "bool" }, "plain", 1), "yes");

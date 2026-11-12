@@ -62,8 +62,18 @@ pub fn code_checks(sol: &Solution) -> Vec<Check> {
     let share = s.forced_share();
     let mut c = vec![
         (
-            l.n_doe > 0 && l.doe_area + 1e-9 >= doe_min,
-            format!("Doe + litter cages are {:.2} m² (Code: {doe_min:.2} m² for litters to {} wk)", l.doe_area, trim1(w as f64 / 7.0)),
+            l.n_doe > 0 && l.doe_floor + 1e-9 >= doe_min,
+            if p.nest_box_m2 > 0.0 {
+                format!(
+                    "Doe + litter cages are {:.2} m²: {:.2} m² of floor plus a {:.2} m² nest box (Code: {doe_min:.2} m² for litters to {} wk)",
+                    l.doe_area,
+                    l.doe_floor,
+                    l.doe_area - l.doe_floor,
+                    trim1(w as f64 / 7.0)
+                )
+            } else {
+                format!("Doe + litter cages are {:.2} m² (Code: {doe_min:.2} m² for litters to {} wk)", l.doe_area, trim1(w as f64 / 7.0))
+            },
         ),
         (
             l.n_buck > 0 && l.buck_area + 1e-9 >= code::BREEDER * p.qol_buck,

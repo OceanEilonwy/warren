@@ -136,7 +136,8 @@ function HelpDialog(props: { ref: (d: HTMLDialogElement) => void }) {
           </li>
           <li>
             A litter is weaned early if the doe is due to kindle again (nest box goes in 2 days before). Weaning at 5 weeks or earlier lets doe cages
-            be the smaller 0.56 m² size; later weaning needs 0.74 m². The fastest re-mating allowed is 11 days after kindling, and does mated while
+            be the smaller 0.56 m² size; later weaning needs 0.74 m². Each doe cage also has room for the nest box on top of that (set its
+            size under Assumptions). The fastest re-mating allowed is 11 days after kindling, and does mated while
             still nursing conceive less often.
           </li>
           <li>With a headcount cap, a doe is only mated if there will be room for her litter; if the cap is still exceeded, the oldest growers are butchered early.</li>

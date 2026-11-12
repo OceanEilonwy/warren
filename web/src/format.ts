@@ -28,6 +28,7 @@ const AFFIXES: Partial<Record<Fmt, [string, string]>> = {
   qol: ["×", ""],
   cap_or_none: ["", "rabbits"],
   kg: ["", "kg"],
+  sq_metres: ["", "m²"],
 };
 
 /** Text before and after the number in an entry box. */
@@ -56,6 +57,7 @@ const RENDER: Record<Fmt, (v: number) => string> = {
   cap_or_none: (v) => (v === 0 ? "no cap" : v.toFixed(0)),
   plain: (v) => trim1(v),
   kg: (v) => `${v.toFixed(1)} kg`,
+  sq_metres: (v) => `${v.toFixed(2)} m²`,
 };
 
 export function render(f: Fmt, v: number): string {

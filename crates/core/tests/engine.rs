@@ -305,6 +305,8 @@ fn replacements_are_reared_ahead_so_retirement_costs_little() {
         grower_cage_w: 1.25,
         breeder_mortality: 0.0,
         replacement: Replacement::Buy,
+        // tests rearing ahead, not cage geometry: keep the layout this was written against
+        nest_box_m2: 0.0,
         ..Params::default()
     };
     let short = simulate(&Params { breeder_life_years: 1.0, ..p.clone() }).metric(MetricKey::MeatKgPerYr).mean;

@@ -2,7 +2,7 @@
 
 export type Fmt =
   | "metres" | "cm" | "weeks_days" | "days" | "pct" | "pct_points" | "money" | "money_per_kg"
-  | "int" | "years" | "g_per_day" | "qol" | "cap_or_none" | "plain" | "kg";
+  | "int" | "years" | "g_per_day" | "qol" | "cap_or_none" | "plain" | "kg" | "sq_metres";
 
 export type Kind =
   | { type: "range"; min: number; max: number; step: number }

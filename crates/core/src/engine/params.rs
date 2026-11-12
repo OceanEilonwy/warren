@@ -35,6 +35,8 @@ pub struct Params {
     pub tier_overhead_cm: f64,
     /// Interior height (Code: >= 45 cm for rabbits > 12 wk).
     pub cage_height_cm: f64,
+    /// Floor taken by the nest box in each doe cage (m²), added on top of the Code area for doe + litter.
+    pub nest_box_m2: f64,
     /// Requested tiers (clamped to what fits).
     pub tiers: u32,
     /// Target width of grower cages (m).
@@ -101,6 +103,7 @@ impl Default for Params {
             max_reach_m: 0.75,
             tier_overhead_cm: 15.0,
             cage_height_cm: 45.0,
+            nest_box_m2: 0.12,
             tiers: 2,
             grower_cage_w: 1.0,
             qol_doe: 1.0,

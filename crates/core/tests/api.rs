@@ -135,7 +135,7 @@ fn switching_to_max_floor_space_suggests_meat_and_herd_minimums() {
 fn cost_says_what_a_constraint_costs() {
     let a = api();
     let mut r = base();
-    r["constraints"] = j!([{ "key": "qol", "op": "min", "value": 2.0 }, { "key": "max_headcount", "op": "max", "value": 0 }]);
+    r["constraints"] = j!([{ "key": "qol", "op": "min", "value": 1.75 }, { "key": "max_headcount", "op": "max", "value": 0 }]);
     let t = call(&a, "cost", j!({ "request": r.clone(), "key": "qol" }))["text"].as_str().unwrap().to_string();
     assert!(t.starts_with("Costs ") && t.contains("kg/yr"), "{t}");
     let t = call(&a, "cost", j!({ "request": r.clone(), "key": "max_headcount" }))["text"].as_str().unwrap().to_string();

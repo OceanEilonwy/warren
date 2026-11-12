@@ -31,8 +31,10 @@ pub struct Layout {
     pub rows: usize,
     pub row_depth: f64,
     pub unused_depth: f64,
-    /// Area of a doe + litter cage (code x quality of life).
+    /// Area of a doe + litter cage: `doe_floor` plus the nest box.
     pub doe_area: f64,
+    /// Floor left for the doe and litter once the nest box is in (code x quality of life).
+    pub doe_floor: f64,
     /// Area of an adult breeder cage (code x quality of life).
     pub buck_area: f64,
     pub cages: Vec<Cage>,
@@ -66,7 +68,9 @@ pub fn compute_layout(p: &Params) -> Layout {
     let rows = if p.access_both_sides { 2 } else { 1 };
     let row_depth = (p.depth_m / rows as f64).min(p.max_reach_m).max(0.0);
     let unused_depth = (p.depth_m - rows as f64 * row_depth).max(0.0);
-    let doe_area = (if p.wean_days <= 35 { code::DOE_LITTER_5WK } else { code::DOE_LITTER_8WK }) * p.qol_doe;
+    // the doe and litter get their Code area (times QoL); the nest box sits in the cage on top of that
+    let doe_floor = (if p.wean_days <= 35 { code::DOE_LITTER_5WK } else { code::DOE_LITTER_8WK }) * p.qol_doe;
+    let doe_area = doe_floor + p.nest_box_m2.max(0.0);
     let buck_area = code::BREEDER * p.qol_buck;
     let w_doe = doe_area / row_depth.max(1e-9);
     let w_buck = buck_area / row_depth.max(1e-9);
@@ -134,7 +138,22 @@ pub fn compute_layout(p: &Params) -> Layout {
     if cages.is_empty() {
         issues.push("No cages fit in this space.".into());
     }
-    Layout { max_tiers, tiers, rows, row_depth, unused_depth, doe_area, buck_area, cages, n_doe, n_buck, n_grow, issues, feasible }
+    Layout {
+        max_tiers,
+        tiers,
+        rows,
+        row_depth,
+        unused_depth,
+        doe_area,
+        doe_floor,
+        buck_area,
+        cages,
+        n_doe,
+        n_buck,
+        n_grow,
+        issues,
+        feasible,
+    }
 }
 
 #[cfg(test)]
@@ -201,15 +220,26 @@ mod tests {
 
     #[test]
     fn wean_age_sets_doe_cage_size() {
-        assert!((layout_of(|p| p.wean_days = 35).doe_area - 0.56).abs() < 1e-9);
-        assert!((layout_of(|p| p.wean_days = 36).doe_area - 0.74).abs() < 1e-9);
+        assert!((layout_of(|p| p.wean_days = 35).doe_floor - 0.56).abs() < 1e-9);
+        assert!((layout_of(|p| p.wean_days = 36).doe_floor - 0.74).abs() < 1e-9);
+    }
+
+    #[test]
+    fn nest_box_adds_to_doe_cages_only() {
+        let without = layout_of(|p| p.nest_box_m2 = 0.0);
+        let with = layout_of(|p| p.nest_box_m2 = 0.12);
+        assert!((without.doe_area - without.doe_floor).abs() < 1e-9);
+        assert!((with.doe_area - with.doe_floor - 0.12).abs() < 1e-9);
+        assert!((with.doe_floor - without.doe_floor).abs() < 1e-9);
+        assert!((with.buck_area - without.buck_area).abs() < 1e-9);
     }
 
     #[test]
     fn doe_qol_only_grows_doe_cages() {
         let base = layout_of(|_| {});
         let big = layout_of(|p| p.qol_doe = 1.5);
-        assert!((big.doe_area / base.doe_area - 1.5).abs() < 1e-9);
+        assert!((big.doe_floor / base.doe_floor - 1.5).abs() < 1e-9);
+        assert!((big.doe_area - big.doe_floor - (base.doe_area - base.doe_floor)).abs() < 1e-9);
         assert!((big.buck_area - base.buck_area).abs() < 1e-9);
     }
 

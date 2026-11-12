@@ -33,6 +33,7 @@ pub enum Fmt {
     CapOrNone,
     Plain,
     Kg,
+    SqMetres,
 }
 
 fn trim1(v: f64) -> String {
@@ -58,6 +59,7 @@ impl Fmt {
             Fmt::Qol => ("×", ""),
             Fmt::CapOrNone => ("", "rabbits"),
             Fmt::Kg => ("", "kg"),
+            Fmt::SqMetres => ("", "m²"),
         }
     }
 
@@ -95,6 +97,7 @@ impl Fmt {
             }
             Fmt::Plain => trim1(v),
             Fmt::Kg => format!("{v:.1} kg"),
+            Fmt::SqMetres => format!("{v:.2} m²"),
         }
     }
 }
@@ -197,6 +200,16 @@ pub static ASSUMPTIONS: [Group; 5] = [
         note: "",
         ctls: &[
             num!(cage_height_cm, f64, "Cage interior height", 45.0, 90.0, 1.0, Fmt::Cm, "Code minimum 45 cm for rabbits over 12 weeks."),
+            num!(
+                nest_box_m2,
+                f64,
+                "Nest box floor area",
+                0.0,
+                0.3,
+                0.01,
+                Fmt::SqMetres,
+                "Each doe cage is this much bigger than the Code area so the nest box doesn't eat into the doe and litter's floor. About 0.12 m² for a 30 × 40 cm box; 0 to leave it out."
+            ),
             num!(tier_overhead_cm, f64, "Floor + tray + gap per tier", 5.0, 30.0, 1.0, Fmt::Cm, ""),
             num!(max_reach_m, f64, "Max cage depth you can reach", 0.4, 1.2, 0.05, Fmt::Metres, ""),
         ],
@@ -358,7 +371,7 @@ pub static VAR_UI: [VarUi; 14] = [
         group: "Welfare",
         kind: rng(1.0, 3.0, 0.05),
         fmt: Fmt::Qol,
-        help: "Code: 0.56 m² (litter to 5 wk) or 0.74 m² (to 8 wk). A doe keeps this cage whether or not she has a litter.",
+        help: "Code: 0.56 m² (litter to 5 wk) or 0.74 m² (to 8 wk), plus the nest box. A doe keeps this cage whether or not she has a litter.",
     },
     VarUi {
         var: Var::QolBuck,
