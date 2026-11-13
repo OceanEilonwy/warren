@@ -146,6 +146,15 @@ fn series(rs: &[RunResult], pick: impl Fn(&RunResult) -> &Vec<f64>) -> Series {
     out
 }
 
+/// The last-day cage snapshot of a typical run: the one whose final headcount is the median (lowest seed on
+/// ties). Taking run 0 as-is can show an unlucky run, e.g. a one-doe herd that happens to be empty that day.
+fn typical_snapshot(rs: &[RunResult]) -> Vec<CageSnap> {
+    let head = |r: &RunResult| r.snapshot.iter().map(|c| c.count).sum::<u32>();
+    let mut order: Vec<usize> = (0..rs.len()).collect();
+    order.sort_by_key(|&i| (head(&rs[i]), i));
+    order.get(rs.len() / 2).map_or_else(Vec::new, |&i| rs[i].snapshot.clone())
+}
+
 pub fn simulate(p: &Params) -> Summary {
     simulate_runs(p, p.runs as usize)
 }
@@ -182,7 +191,7 @@ pub fn simulate_runs(p: &Params, runs: usize) -> Summary {
         cages: series(&rs, |r| &r.weekly.cages),
         meat: series(&rs, |r| &r.weekly.meat),
         cost: series(&rs, |r| &r.weekly.cost),
-        snapshot: rs[0].snapshot.clone(),
+        snapshot: typical_snapshot(&rs),
         runs,
         layout,
     }
