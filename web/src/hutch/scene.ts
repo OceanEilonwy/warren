@@ -90,7 +90,14 @@ interface Bunny {
   r: number;
   /** In a narrow cell the rabbit keeps to its long axis and only turns end to end; otherwise null. */
   axis: number | null;
-  next: () => [number, number] | null;
+  /** Spots it could hop to next, best first: always next to where it is now, never across the cage. */
+  next: () => [number, number][];
+  /** Called once a hop to `to` is committed (growers book their next floor cell). */
+  moved: (to: [number, number]) => void;
+  /** Whether the whole body, at (x, z) facing h, is inside the cage walls and off the nest box. */
+  fits: (x: number, z: number, h: number) => boolean;
+  /** The current turn ends in a hop (true) or is a turn on the spot (false). */
+  hops: boolean;
 }
 
 /** The rabbit's hop clip leaves the ground at about 20% and lands at about 80% of its length. */
@@ -124,6 +131,31 @@ function meshTexture(): THREE.Texture {
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const ease = (t: number) => t * t * (3 - 2 * t);
 const angleTo = (from: number, to: number) => from + Math.atan2(Math.sin(to - from), Math.cos(to - from));
+/** Points on the body outline, in body lengths: x forward (nose), z to the side. */
+const BODY = [[0.5, 0], [-0.48, 0], [0.25, 0.17], [0.25, -0.17], [-0.25, 0.19], [-0.25, -0.19]] as const;
+
+/**
+ * The heading to end a turn on so the rabbit faces `target` without its body swinging through a wall or
+ * the nest box: the short way round if that's clear, else the long way; null if neither is.
+ */
+function turnTo(b: Bunny, target: number): number | null {
+  const short = angleTo(b.heading, target);
+  const long = short - Math.sign(short - b.heading || 1) * Math.PI * 2;
+  for (const end of [short, long]) {
+    const span = end - b.heading;
+    const steps = Math.max(1, Math.ceil(Math.abs(span) / 0.12));
+    let ok = true;
+    for (let i = 1; i <= steps && ok; i++) ok = b.fits(b.x, b.z, b.heading + (span * i) / steps);
+    if (ok) return end;
+  }
+  return null;
+}
+
+/** Whether a hop from where the rabbit is to `to`, facing h, keeps its body clear the whole way. */
+function hopFits(b: Bunny, to: [number, number], h: number): boolean {
+  for (const k of [0.25, 0.5, 0.75, 1]) if (!b.fits(b.x + (to[0] - b.x) * k, b.z + (to[1] - b.z) * k, h)) return false;
+  return true;
+}
 
 /**
  * The coat: thousands of short, soft strands painted on a light ground. Used as the colour map (on top
@@ -437,6 +469,16 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
       const m = 0.05;
       const bx0 = c.x + m, bx1 = c.x + c.w - m, bz0 = zMin + m, bz1 = zMin + rd - m;
       const clear = (x: number, z: number, r: number) => !nest || x + r < nest.x0 - 0.02 || z + r < nest.z0 - 0.02 || z - r > nest.z1 + 0.02;
+      const wx0 = c.x + 0.015, wx1 = c.x + c.w - 0.015, wz0 = zMin + 0.015, wz1 = zMin + rd - 0.015;
+      const fitsFor = (len: number) => (x: number, z: number, h: number) => {
+        const fx = Math.cos(h), fz = -Math.sin(h);
+        for (const [u, v] of BODY) {
+          const px = x + (u * fx - v * fz) * len, pz = z + (u * fz + v * fx) * len;
+          if (px < wx0 || px > wx1 || pz < wz0 || pz > wz1) return false;
+          if (nest && px > nest.x0 - 0.01 && pz > nest.z0 - 0.01 && pz < nest.z1 + 0.01) return false;
+        }
+        return true;
+      };
       // everyone in this cage, so nobody lands on (or starts on) anyone else
       const mates: Bunny[] = [];
       const free = (x: number, z: number, r: number, self: Bunny | null) =>
@@ -458,13 +500,26 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
         }
         return null;
       };
-      /** A roaming rabbit (doe, kits, buck): starts on a clear spot, hops to clear spots nearby. */
+      /**
+       * A roaming rabbit (doe, kits, buck): starts on a clear spot, then hops about one body length at a
+       * time to clear floor beside it. Kits drift back towards `home` (the nest box doorway).
+       */
       const roam = (len: number, home?: [number, number, number]) => {
         const r = len * 0.42;
         const at = (home && pick(r, null, home)) ?? pick(r, null) ?? [cx, cz];
-        const b = add(len, at, () => null, 0, 1);
+        const b = add(len, at, () => [], 0, 1);
         b.r = r;
-        b.next = () => (home && Math.random() < 0.7 ? pick(r, b, [home[0], home[1], home[2]]) : null) ?? pick(r, b, [b.x, b.z, Math.max(0.12, len * 1.2)]);
+        b.next = () => {
+          const out: [number, number][] = [];
+          for (let i = 0; i < 40 && out.length < 8; i++) {
+            const a = rand(0, Math.PI * 2), dd = rand(len * 0.45, len);
+            const x = b.x + Math.cos(a) * dd, z = b.z + Math.sin(a) * dd;
+            if (x < bx0 + r || x > bx1 - r || z < bz0 + r || z > bz1 - r) continue;
+            if (clear(x, z, r) && free(x, z, r, b) && free((x + b.x) / 2, (z + b.z) / 2, r * 0.8, b)) out.push([x, z]);
+          }
+          if (home && Math.random() < 0.7) out.sort((p, q) => Math.hypot(p[0] - home[0], p[1] - home[1]) - Math.hypot(q[0] - home[0], q[1] - home[1]));
+          return out;
+        };
         mates.push(b);
         return b;
       };
@@ -490,12 +545,16 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
         shadow.scale.set(len * 1.1, 1, len * 0.7);
         shadow.renderOrder = 1;
         g.add(shadow);
-        const heading = rand(0, Math.PI * 2);
+        // start facing a way the body fits
+        const fits = fitsFor(len);
+        const tries = [...Array.from({ length: 24 }, () => rand(0, Math.PI * 2)), 0, Math.PI / 2, Math.PI, -Math.PI / 2];
+        const heading = tries.find((h) => fits(at[0], at[1], h)) ?? (c.w >= rd ? 0 : Math.PI / 2);
         const b: Bunny = {
           obj, mixer, acts, current: acts.Idle, len, kit,
           x: at[0], z: at[1], fx: at[0], fz: at[1], tx: at[0], tz: at[1],
           heading, fromHeading: heading, toHeading: heading,
           state: "idle", t: 0, dur: rand(0.5, 4), outline: null, shadow, next, r: len * 0.42, axis: null,
+          moved: () => {}, fits, hops: false,
         };
         if (area > 0) {
           b.outline = outline(area, aspect, col.line);
@@ -528,8 +587,8 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
         roam(LENGTH.buck);
       } else if (c.role === "replacement" || c.role === "growers") {
         // each grower owns a floor cell at least its Code area. An even grid when everyone fits with
-        // room to spare (then they hop between free cells); otherwise cells sized to each rabbit's area,
-        // which always fit because the plan meets the Code (then they hop on the spot).
+        // room to spare (then they hop into a free cell next to their own); otherwise cells sized to each
+        // rabbit's area, which always fit because the plan meets the Code (then they stay put).
         const n = c.role === "replacement" ? 1 : c.count;
         const olderN = c.role === "replacement" ? 1 : c.older;
         const areas = Array.from({ length: n }, (_, k) => (k < olderN ? CODE.older : CODE.young));
@@ -543,12 +602,12 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
           const score = -Math.abs(Math.log(fw / cols / (fd / rows))) * 4 - Math.abs(cells - n - 2);
           if (score > bestScore) [bestScore, grid] = [score, [cols, rows]];
         }
-        type Cell = { x: number; z: number; w: number; d: number; used: boolean };
+        type Cell = { x: number; z: number; w: number; d: number; used: boolean; i: number; j: number };
         const cells: Cell[] = [];
         if (grid) {
           const [cols, rows] = grid;
           const cw = fw / cols, cd = fd / rows;
-          for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) cells.push({ x: c.x + cw * (i + 0.5), z: zMin + cd * (j + 0.5), w: cw, d: cd, used: false });
+          for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) cells.push({ x: c.x + cw * (i + 0.5), z: zMin + cd * (j + 0.5), w: cw, d: cd, used: false, i, j });
           cells.sort(() => Math.random() - 0.5);
         } else {
           // treemap: one or two strips, each split across in proportion to the rabbits' areas
@@ -564,7 +623,7 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
             let x = c.x;
             for (const k of r) {
               const w = (fw * areas[k]) / sum(r);
-              order[k] = { x: x + w / 2, z: z + rdep / 2, w, d: rdep, used: false };
+              order[k] = { x: x + w / 2, z: z + rdep / 2, w, d: rdep, used: false, i: -1, j: -1 };
               x += w;
             }
             z += rdep;
@@ -576,17 +635,14 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
           cell.used = true;
           const isOld = k < olderN;
           let mine = cell;
-          const next = (): [number, number] | null => {
-            if (!grid) return null;
-            const free = cells.filter((q) => !q.used);
-            if (free.length === 0) return null;
-            free.sort((p, q) => Math.hypot(p.x - mine.x, p.z - mine.z) - Math.hypot(q.x - mine.x, q.z - mine.z));
-            const to = free[Math.floor(Math.random() * Math.min(2, free.length))];
-            mine.used = false;
-            to.used = true;
-            mine = to;
-            return [to.x, to.z];
-          };
+          // only the free cells sharing an edge with its own
+          const next = (): [number, number][] =>
+            grid
+              ? cells
+                  .filter((q) => !q.used && Math.abs(q.i - mine.i) + Math.abs(q.j - mine.j) === 1)
+                  .sort(() => Math.random() - 0.5)
+                  .map((q) => [q.x, q.z])
+              : [];
           // the outline is the rabbit's own Code area in the cage's proportions; in a narrow cell the rabbit
           // lies along it, sized to fit
           let len = isOld ? LENGTH.older : LENGTH.young;
@@ -594,6 +650,13 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
           if (!grid) len = Math.min(len, long * 0.92, short / 0.48);
           const b = add(len, [cell.x, cell.z], next, areas[k], c.w / rd);
           b.r = Math.min(cell.w, cell.d) / 2;
+          b.moved = (to) => {
+            const q = cells.find((q) => q.x === to[0] && q.z === to[1]);
+            if (!q) return;
+            mine.used = false;
+            q.used = true;
+            mine = q;
+          };
           if (!grid) {
             b.axis = cell.w >= cell.d ? 0 : Math.PI / 2;
             b.heading = b.fromHeading = b.toHeading = b.axis + (Math.random() < 0.5 ? 0 : Math.PI);
@@ -655,18 +718,36 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
       };
       if (b.state === "idle" && b.t >= b.dur) {
         const roll = Math.random();
-        const to = roll < (b.kit ? 0.8 : 0.62) ? b.next() : null;
-        if (to || roll < 0.5) {
-          // hop: to the next spot, or a turn on the spot when there's nowhere free
+        // hop: turn to face a clear spot beside it, then hop there. Nowhere to go: maybe turn on the spot.
+        let end: number | null = null;
+        let to: [number, number] | null = null;
+        if (roll < (b.kit ? 0.8 : 0.62)) {
+          for (const p of b.next()) {
+            const h = Math.atan2(-(p[1] - b.z), p[0] - b.x);
+            if (!hopFits(b, p, h)) continue;
+            end = turnTo(b, h);
+            if (end !== null) {
+              to = p;
+              break;
+            }
+          }
+        }
+        if (to === null && roll < 0.5) {
+          for (let i = 0; i < 6 && end === null; i++) {
+            end = turnTo(b, b.axis !== null ? b.heading + Math.PI : b.heading + rand(0.6, 1.6) * (Math.random() < 0.5 ? -1 : 1));
+          }
+        }
+        if (end !== null) {
+          b.hops = to !== null;
+          if (to) b.moved(to);
           b.fx = b.x;
           b.fz = b.z;
           [b.tx, b.tz] = to ?? [b.x, b.z];
-          const dx = b.tx - b.x, dz = b.tz - b.z;
           b.fromHeading = b.heading;
-          b.toHeading = Math.hypot(dx, dz) > 0.01 ? angleTo(b.heading, Math.atan2(-dz, dx)) : b.axis !== null ? b.heading + Math.PI : b.heading + rand(-1.6, 1.6);
+          b.toHeading = end;
           b.state = "turn";
           b.t = 0;
-          b.dur = 0.22;
+          b.dur = 0.15 + Math.abs(end - b.heading) * (b.hops ? 0.08 : 0.25);
         } else if (roll < 0.85 || b.kit) {
           b.acts.Look.timeScale = rand(0.8, 1.1);
           play(b.acts.Look, 0.25);
@@ -681,7 +762,12 @@ export async function createHutch(el: HTMLElement, first: HutchData): Promise<Hu
         }
       } else if (b.state === "turn") {
         b.heading = b.fromHeading + (b.toHeading - b.fromHeading) * ease(Math.min(1, b.t / b.dur));
-        if (b.t >= b.dur) {
+        if (b.t >= b.dur && !b.hops) {
+          b.heading = b.toHeading;
+          b.state = "idle";
+          b.t = 0;
+          b.dur = rand(0.8, 3);
+        } else if (b.t >= b.dur) {
           b.acts.Hop.timeScale = b.kit ? 1.5 : rand(1.0, 1.2);
           play(b.acts.Hop, 0.08);
           b.state = "hop";
