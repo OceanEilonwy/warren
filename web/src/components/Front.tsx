@@ -3,7 +3,8 @@ import { createSignal, For, Show } from "solid-js";
 import type { SolveView } from "../api/types";
 import { fmtNum, num, render, trim1 } from "../format";
 import { busy, go, meta, removeConstraint, request, setLimit, setObjective, solution } from "../state";
-import { ControlRow, CostLine } from "./Controls";
+import { ControlRow, CostLine, LimitQuestion } from "./Controls";
+import { moreVars } from "./More";
 import { Hutch } from "./Hutch";
 import { NumberBox, Range } from "./Slider";
 
@@ -256,6 +257,41 @@ function HerdCard(props: { s: SolveView }) {
   );
 }
 
+/** How many of the "Anything else" questions are answered right here. */
+const FRONT_MORE = 5;
+
+/** "Anything else to keep in mind?": the first few questions, and a way to all of them. */
+function MoreCard() {
+  const vars = () => moreVars();
+  const total = () => vars().length + meta()!.outs.length;
+  const set = () => request()?.constraints.filter((c) => !["qol", "max_headcount"].includes(c.key)).length ?? 0;
+  return (
+    <section class="card step front-more">
+      <h2>
+        <span class="n">4</span> Anything else to keep in mind?
+      </h2>
+      <p class="hint">Answer only what matters to you. Warren works out the rest.</p>
+      <For each={vars().slice(0, FRONT_MORE)}>{(v) => <LimitQuestion v={v} />}</For>
+      <a
+        class="more-link"
+        href="#more"
+        onClick={(e) => {
+          e.preventDefault();
+          go("more");
+        }}
+      >
+        <span>All {total()} questions</span>
+        <Show when={set() > 0}>
+          <span class="count">{set()} set</span>
+        </Show>
+        <span class="plus" aria-hidden="true">
+          →
+        </span>
+      </a>
+    </section>
+  );
+}
+
 export function Front() {
   return (
     <div class="front">
@@ -263,22 +299,7 @@ export function Front() {
         <SpaceCard />
         <MattersCard />
         <HeadcountCard />
-        <a
-          class="card more-link"
-          href="#more"
-          onClick={(e) => {
-            e.preventDefault();
-            go("more");
-          }}
-        >
-          <span>Anything else to keep in mind?</span>
-          <span class="plus" aria-hidden="true">
-            +
-          </span>
-          <Show when={(request()?.constraints.filter((c) => !["qol", "max_headcount"].includes(c.key)).length ?? 0) > 0}>
-            <span class="count">{request()!.constraints.filter((c) => !["qol", "max_headcount"].includes(c.key)).length} set</span>
-          </Show>
-        </a>
+        <MoreCard />
       </div>
       <Show
         when={solution()}

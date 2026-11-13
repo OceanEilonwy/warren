@@ -126,6 +126,12 @@ main.page { max-width: 1440px; margin: 0 auto; padding: 8px 48px 48px; }
 .cost { margin: 10px 0 0; font-size: 14px; color: var(--warn); background: var(--warn-bg); border-radius: 12px; padding: 9px 12px; line-height: 1.4; }
 .cost.free { color: var(--text-2); background: var(--surface-2); }
 .cost.stale { opacity: .6; font-style: italic; }
+.front-more .q { box-shadow: none; border: 0; border-top: 1px solid var(--border); border-radius: 0; padding: 16px 0 0; margin-top: 16px; background: none; }
+.front-more .q h3 { font-size: 16px; }
+.front-more .more-link { border-top: 1px solid var(--border); margin-top: 16px; padding: 16px 0 0; }
+.front-more .more-link:hover { outline: 0; color: var(--accent-text); }
+.front-more .more-link .count { order: 0; margin-left: auto; }
+.front-more .more-link .count + .plus { margin-left: 0; }
 .more-link { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text); font-size: 17px; font-weight: 600; padding: 20px 24px; }
 .more-link:hover { outline: 2px solid var(--border-2); }
 .more-link .plus { margin-left: auto; color: var(--accent-text); font-size: 26px; line-height: 1; }

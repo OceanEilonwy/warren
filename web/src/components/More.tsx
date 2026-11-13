@@ -7,6 +7,12 @@ import { CostLine, LimitQuestion, OP_LABEL } from "./Controls";
 /** Asked on the front screen instead. */
 const ON_FRONT = new Set(["qol", "max_headcount"]);
 
+/** The inputs asked about here, in the order they are shown (by group). */
+export function moreVars() {
+  const m = meta()!;
+  return m.var_groups.flatMap((g) => m.vars.filter((v) => v.group === g && !ON_FRONT.has(v.key)));
+}
+
 const GROUP_TITLE: Record<string, string> = {
   Welfare: "Room for each kind of rabbit",
   Herd: "Your herd",
