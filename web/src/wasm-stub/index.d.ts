@@ -5,4 +5,6 @@
 /** Run one API method. Errors come back as `{"status": n, "message": "..."}` in the exception. */
 export function call(method: string, body: string): string;
 export function initThreadPool(num_threads: number): Promise<unknown>;
-export default function init(module_or_path?: unknown): Promise<unknown>;
+/** Address in `memory` of the running solve's progress, a u32 in ten-thousandths. */
+export function progress_ptr(): number;
+export default function init(module_or_path?: unknown): Promise<{ memory: WebAssembly.Memory }>;

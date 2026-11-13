@@ -5,6 +5,8 @@ import { ApiError, type Loaded, type Meta, type PresetInfo, type SolveView, type
 export interface Backend {
   readonly kind: "http" | "wasm";
   call(method: string, body: unknown): Promise<unknown>;
+  /** How far the running solve has got (0 to 1), or null if unknown. */
+  progress(): Promise<number | null>;
 }
 
 function httpBackend(): Backend {
@@ -32,6 +34,13 @@ function httpBackend(): Backend {
         throw new ApiError(res.status, message);
       }
       return JSON.parse(text);
+    },
+    async progress() {
+      try {
+        return ((await this.call("progress", {})) as { done: number }).done;
+      } catch {
+        return null;
+      }
     },
   };
 }

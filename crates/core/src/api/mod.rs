@@ -13,6 +13,7 @@
 //! | `cost`           | `{"request", "key"}`                   | `{"text"}`                             |
 //! | `add_constraint` | `{"request", "key"}`                   | `{"request"}`                          |
 //! | `set_objective`  | `{"request", "objective"}`             | `{"request"}`                          |
+//! | `progress`       | `{}`                                   | `{"done"}`: the running solve, 0 to 1  |
 //!
 //! Every `request` is a [`WireRequest`]; it is checked and clamped before use, and replies carry the
 //! normalised version back.
@@ -28,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::engine::{
-    CageSnap, Layout, MetricKey, Objective, OptConfig, Out, Params, Problem, Solution, Var, sim::counted_from_day, solve as run_solver,
+    CageSnap, Layout, MetricKey, Objective, OptConfig, Out, Params, Problem, Progress, Solution, Var, sim::counted_from_day, solve_tracked,
     summary::Series, summary::Stat,
 };
 pub use meta::{Meta, Request, WireConstraint, WireRequest};
@@ -118,6 +119,13 @@ pub struct Api {
     cache: Mutex<HashMap<String, Arc<Solution>>>,
     presets: Source,
     cfg: OptConfig,
+    progress: Progress,
+}
+
+/// How far the current solve has got, 0 to 1.
+#[derive(Serialize)]
+struct ProgressReply {
+    done: f64,
 }
 
 #[derive(Deserialize)]
@@ -197,7 +205,7 @@ impl Api {
     const CACHE_LIMIT: usize = 64;
 
     pub fn new(presets: Source) -> Self {
-        Api { cache: Mutex::new(HashMap::new()), presets, cfg: OptConfig::default() }
+        Api { cache: Mutex::new(HashMap::new()), presets, cfg: OptConfig::default(), progress: Progress::default() }
     }
 
     /// Use a cheaper solver (tests).
@@ -212,7 +220,7 @@ impl Api {
         if let Some(s) = self.cache.lock().unwrap().get(&key) {
             return s.clone();
         }
-        let s = Arc::new(run_solver(problem, self.cfg));
+        let s = Arc::new(solve_tracked(problem, self.cfg, &self.progress));
         let mut c = self.cache.lock().unwrap();
         if c.len() >= Self::CACHE_LIMIT {
             c.clear();
@@ -221,9 +229,18 @@ impl Api {
         s
     }
 
+    /// How far the current solve has got (shared by every caller of this `Api`).
+    pub fn progress(&self) -> &Progress {
+        &self.progress
+    }
+
     /// Run one API method.
     pub fn call(&self, method: &str, body: &str) -> Result<String, ApiError> {
+        if matches!(method, "solve" | "cost" | "add_constraint" | "set_objective") {
+            self.progress.reset();
+        }
         match method {
+            "progress" => reply(&ProgressReply { done: self.progress.fraction() }),
             "meta" => reply(&meta::meta()),
             "presets" => reply(&self.presets.list()),
             "preset_load" => {

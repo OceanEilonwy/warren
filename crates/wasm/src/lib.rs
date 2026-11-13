@@ -19,3 +19,10 @@ fn api() -> &'static Api {
 pub fn call(method: &str, body: &str) -> Result<String, JsValue> {
     api().call(method, body).map_err(|e| JsValue::from_str(&serde_json::json!({ "status": e.status, "message": e.message }).to_string()))
 }
+
+/// Address (in this module's shared memory) of the running solve's progress, a `u32` in ten-thousandths.
+/// The page reads it from the memory's `SharedArrayBuffer` while the worker is busy solving.
+#[wasm_bindgen]
+pub fn progress_ptr() -> u32 {
+    api().progress().shown_ptr() as u32
+}

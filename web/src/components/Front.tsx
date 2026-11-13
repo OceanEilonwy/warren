@@ -6,6 +6,7 @@ import { busy, go, meta, removeConstraint, request, setLimit, setObjective, solu
 import { ControlRow, CostLine, LimitQuestion } from "./Controls";
 import { moreVars } from "./More";
 import { Hutch } from "./Hutch";
+import { Pct } from "./Pct";
 import { NumberBox, Range } from "./Slider";
 
 const OBJ_LABEL: Record<string, string> = { max_meat: "Most meat", max_qol: "Most room" };
@@ -306,7 +307,10 @@ export function Front() {
         fallback={
           <section class="card herd pending">
             <div class="big-spinner" aria-hidden="true" />
-            <p>Planning your herd…</p>
+            <p>
+              Planning your herd…
+              <Pct />
+            </p>
             <p class="muted">Running hundreds of randomised simulations to find the best plan.</p>
           </section>
         }

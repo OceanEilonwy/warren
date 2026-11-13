@@ -9,7 +9,8 @@ use rayon::prelude::*;
 use super::constraints::{Bound, Objective, Problem, Solution, Subject, Var, Violation};
 use super::layout::compute_layout;
 use super::params::Params;
-use super::summary::{MetricKey, Summary, simulate, simulate_runs};
+use super::progress::Progress;
+use super::summary::{MetricKey, Summary, simulate_runs_tracked};
 
 /// Plans where more than this share of rabbits are butchered early for lack of room are rejected.
 pub const MAX_FORCED_SHARE: f64 = 0.03;
@@ -79,10 +80,10 @@ fn out_violation(problem: &Problem, s: &Summary) -> f64 {
 
 /// Levers are always searched for the most meat; floor space is what the "maximise floor space"
 /// objective adds on top (see `solve_max_qol`).
-fn evaluate(p: &Params, problem: &Problem, cfg: &OptConfig) -> Score {
+fn evaluate(p: &Params, problem: &Problem, cfg: &OptConfig, prog: &Progress) -> Score {
     let mut q = p.clone();
     q.years = q.years.min(cfg.eval_years);
-    let s = simulate_runs(&q, cfg.eval_runs);
+    let s = simulate_runs_tracked(&q, cfg.eval_runs, prog);
     Score { violation: out_violation(problem, &s) + forced_excess(&s), objective: s.metric(MetricKey::MeatKgPerYr).mean }
 }
 
@@ -148,24 +149,65 @@ fn nearest(d: &[f64], target: f64) -> f64 {
     d.iter().copied().min_by(|a, b| (a - target).abs().total_cmp(&(b - target).abs())).unwrap_or(target)
 }
 
-fn search_levers(problem: &Problem, welfare: Params, cfg: &OptConfig) -> Params {
+/// Where a lever search starts (defaults where allowed, as many tiers as fit), and the tier limit.
+fn search_start(problem: &Problem, welfare: Params) -> (Params, u32) {
     let max_tiers = compute_layout(&Params { tiers: 99, ..welfare.clone() }).max_tiers.max(1) as u32;
     let dom = |v: Var| domain(problem, v, max_tiers);
-    let eps = Objective::MaxMeat.epsilon();
-
     let mut best = welfare;
     let defaults = Params::default();
     for v in [Var::GrowerCageW, Var::Does, Var::Bucks, Var::WeanDays, Var::RebreedDays, Var::ButcherDays, Var::ButcherRule] {
         v.set(&mut best, nearest(&dom(v), v.get(&defaults)));
     }
     Var::Tiers.set(&mut best, dom(Var::Tiers).last().copied().unwrap_or(1.0));
-    let mut best_score = evaluate(&best, problem, cfg);
+    (best, max_tiers)
+}
+
+/// Does that fit beside `bucks` buck cages in `best`'s layout (all of them if none are known to fit).
+fn does_for(problem: &Problem, best: &Params, bucks: f64, max_tiers: u32) -> Vec<f64> {
+    let fit = compute_layout(&Params { does: 99, bucks: bucks as u32, ..best.clone() }).n_doe as f64;
+    let all = domain(problem, Var::Does, max_tiers);
+    let does: Vec<f64> = all.iter().copied().filter(|d| *d <= fit).collect();
+    if does.is_empty() { all } else { does }
+}
+
+/// Run-years to score one candidate.
+fn eval_units(p: &Params, cfg: &OptConfig) -> u64 {
+    cfg.eval_runs as u64 * u64::from(p.years.min(cfg.eval_years))
+}
+
+/// Candidates scored in one search round from `best` (later rounds can differ a little).
+fn round_size(problem: &Problem, best: &Params, max_tiers: u32) -> u64 {
+    let dom = |v: Var| domain(problem, v, max_tiers).len();
+    let herd: usize = domain(problem, Var::Bucks, max_tiers).into_iter().map(|b| does_for(problem, best, b, max_tiers).len()).sum();
+    let levers: usize = [Var::GrowerCageW, Var::Tiers, Var::RebreedDays, Var::WeanDays].into_iter().map(dom).sum();
+    (herd + levers + dom(Var::ButcherRule) * dom(Var::ButcherDays)) as u64
+}
+
+/// Run-years a lever search should take: the starting plan, every round, and one check afterwards.
+fn search_units(problem: &Problem, welfare: &Params, cfg: &OptConfig) -> u64 {
+    let (best, max_tiers) = search_start(problem, welfare.clone());
+    (2 + cfg.rounds as u64 * round_size(problem, &best, max_tiers)) * eval_units(&best, cfg)
+}
+
+/// Run-years for the full report on a plan.
+fn finish_units(p: &Params) -> u64 {
+    u64::from(p.runs) * u64::from(p.years)
+}
+
+/// Coordinate search over the free levers, reported as the `lo .. lo + width` stretch of `prog`.
+fn search_levers(problem: &Problem, welfare: Params, cfg: &OptConfig, prog: &Progress, lo: f64, width: f64) -> Params {
+    let (mut best, max_tiers) = search_start(problem, welfare);
+    let dom = |v: Var| domain(problem, v, max_tiers);
+    let eps = Objective::MaxMeat.epsilon();
+    let per_round = round_size(problem, &best, max_tiers) * eval_units(&best, cfg);
+    prog.stage(lo, width, (2 + cfg.rounds as u64 * round_size(problem, &best, max_tiers)) * eval_units(&best, cfg));
+    let mut best_score = evaluate(&best, problem, cfg, prog);
 
     let try_all = |best: &mut Params, best_score: &mut Score, cands: Vec<Params>| -> bool {
         if cands.is_empty() {
             return false;
         }
-        let scores: Vec<Score> = cands.par_iter().map(|c| evaluate(c, problem, cfg)).collect();
+        let scores: Vec<Score> = cands.par_iter().map(|c| evaluate(c, problem, cfg, prog)).collect();
         let mut pick = None;
         let mut top = *best_score;
         for (i, s) in scores.iter().enumerate() {
@@ -194,14 +236,11 @@ fn search_levers(problem: &Problem, welfare: Params, cfg: &OptConfig) -> Params 
             .collect()
     };
 
-    for _ in 0..cfg.rounds {
+    for round in 0..cfg.rounds {
         let mut improved = false;
         // herd size
         for bucks in dom(Var::Bucks) {
-            let fit = compute_layout(&Params { does: 99, bucks: bucks as u32, ..best.clone() }).n_doe as f64;
-            let does: Vec<f64> = dom(Var::Does).into_iter().filter(|d| *d <= fit).collect();
-            let does = if does.is_empty() { dom(Var::Does) } else { does };
-            let cands = does
+            let cands = does_for(problem, &best, bucks, max_tiers)
                 .into_iter()
                 .map(|d| {
                     let mut p = best.clone();
@@ -227,6 +266,7 @@ fn search_levers(problem: &Problem, welfare: Params, cfg: &OptConfig) -> Params 
         }
         improved |= try_all(&mut best, &mut best_score, cands);
         if !improved {
+            prog.add((cfg.rounds - round - 1) as u64 * per_round); // the rounds we skip
             break;
         }
     }
@@ -239,8 +279,9 @@ fn mean_qol(p: &Params) -> f64 {
     Var::QOL_TYPES.iter().map(|v| v.get(p)).sum::<f64>() / 4.0
 }
 
-fn finish(problem: &Problem, params: Params) -> Solution {
-    let summary = simulate(&params);
+fn finish(problem: &Problem, params: Params, prog: &Progress, lo: f64, width: f64) -> Solution {
+    prog.stage(lo, width, finish_units(&params));
+    let summary = simulate_runs_tracked(&params, params.runs as usize, prog);
     let mut violations = Vec::new();
     for (o, b) in &problem.outs {
         let v = o.of(&summary);
@@ -273,29 +314,48 @@ fn finish(problem: &Problem, params: Params) -> Solution {
 }
 
 pub fn solve(problem: &Problem, cfg: OptConfig) -> Solution {
+    solve_tracked(problem, cfg, &Progress::default())
+}
+
+/// [`solve`], reporting how far it has got in `prog`.
+pub fn solve_tracked(problem: &Problem, cfg: OptConfig, prog: &Progress) -> Solution {
     match problem.objective {
         Objective::MaxMeat => {
             let welfare = with_welfare(problem, qol_values(problem, None));
-            finish(problem, search_levers(problem, welfare, &cfg))
+            let search = search_units(problem, &welfare, &cfg) as f64;
+            let share = search / (search + finish_units(&welfare) as f64);
+            let p = search_levers(problem, welfare, &cfg, prog, 0.0, share);
+            finish(problem, p, prog, share, 1.0 - share)
         }
-        Objective::MaxQol => solve_max_qol(problem, cfg),
+        Objective::MaxQol => solve_max_qol(problem, cfg, prog),
     }
 }
 
 /// Largest QoL scalar for which the result limits can still be met, found by bisection on a grid.
-fn solve_max_qol(problem: &Problem, cfg: OptConfig) -> Solution {
+fn solve_max_qol(problem: &Problem, cfg: OptConfig, prog: &Progress) -> Solution {
     let steps = ((QOL_MAX - 1.0) / QOL_STEP).round() as usize;
     let s_of = |i: usize| 1.0 + QOL_STEP * i as f64;
     let fast = OptConfig { rounds: 2, ..cfg };
-    let attempt = |i: usize, cfg: &OptConfig| -> (Params, bool) {
+    // Plan the bar: a full search, a fast one at the top, the bisection, a full confirming search and
+    // the report, sized from the lowest QoL (each search then measures its own work).
+    let low = with_welfare(problem, qol_values(problem, Some(s_of(0))));
+    let (full_u, fast_u) = (search_units(problem, &low, &cfg) as f64, search_units(problem, &low, &fast) as f64);
+    let bisect = (usize::BITS - steps.max(1).leading_zeros()) as f64; // ≈ log2(steps), rounded up
+    let total = 2.0 * full_u + (1.0 + bisect) * fast_u + finish_units(&low) as f64;
+    let (full_w, fast_w) = (full_u / total, fast_u / total);
+    let mut at = 0.0;
+    let mut attempt = |i: usize, cfg: &OptConfig| -> (Params, bool) {
+        let w = if cfg.rounds == fast.rounds { fast_w } else { full_w };
         let welfare = with_welfare(problem, qol_values(problem, Some(s_of(i))));
-        let p = search_levers(problem, welfare, cfg);
-        let sc = evaluate(&p, problem, cfg);
+        let p = search_levers(problem, welfare, cfg, prog, at, w);
+        let sc = evaluate(&p, problem, cfg, prog);
+        at += w;
         (p, sc.violation <= 1e-9)
     };
     let (p0, ok0) = attempt(0, &cfg);
     if !ok0 {
-        return finish(problem, p0); // even the lowest QoL can't meet the limits: report the closest plan
+        // even the lowest QoL can't meet the limits: report the closest plan
+        return finish(problem, p0, prog, 1.0 - finish_units(&low) as f64 / total, finish_units(&low) as f64 / total);
     }
     let (mut lo, mut hi) = (0usize, steps);
     if attempt(hi, &fast).1 {
@@ -307,10 +367,11 @@ fn solve_max_qol(problem: &Problem, cfg: OptConfig) -> Solution {
         }
     }
     // confirm with the full search; step down if the longer run disagrees
+    let report = finish_units(&low) as f64 / total;
     let mut i = lo;
     loop {
         let (p, _) = attempt(i, &cfg);
-        let sol = finish(problem, p);
+        let sol = finish(problem, p, prog, 1.0 - report, report);
         if sol.feasible() || i == 0 {
             return sol;
         }

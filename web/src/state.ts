@@ -23,6 +23,8 @@ export const [solution, setSolution] = createSignal<SolveView | null>(null);
 export const [costs, setCosts] = createSignal<Record<string, { text: string; stale: boolean }>>({});
 /** Whole-plan work in flight (solves, constraint and objective changes). */
 export const [busy, setBusy] = createSignal(0);
+/** How far the running solve has got (0 to 1), or null when unknown or idle. */
+export const [progress, setProgress] = createSignal<number | null>(null);
 /** Cost lines in flight. */
 export const [costing, setCosting] = createSignal(0);
 export const [error, setError] = createSignal<{ message: string; retry: () => void } | null>(null);
@@ -36,6 +38,8 @@ const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e
 /** Run whole-plan work, counting it for the progress bar and reporting failures with a Retry. */
 async function work<T>(f: () => Promise<T>, retry: () => void): Promise<T | undefined> {
   setBusy((n) => n + 1);
+  inFlight++;
+  void watchProgress();
   try {
     const out = await f();
     setError(null);
@@ -44,7 +48,31 @@ async function work<T>(f: () => Promise<T>, retry: () => void): Promise<T | unde
     setError({ message: message(e), retry });
     return undefined;
   } finally {
+    inFlight--;
     setBusy((n) => n - 1);
+  }
+}
+
+/** Whole-plan work in flight (a plain count: signal writes are batched). */
+let inFlight = 0;
+let watching = false;
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** While whole-plan work runs, ask the backend how far its solve has got a few times a second. */
+async function watchProgress() {
+  if (watching) return;
+  watching = true;
+  try {
+    const b = await backend();
+    await pause(150);
+    while (inFlight > 0) {
+      const f = await b.progress();
+      if (inFlight > 0) setProgress(f);
+      await pause(250);
+    }
+  } finally {
+    setProgress(null);
+    watching = false;
   }
 }
 

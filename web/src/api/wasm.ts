@@ -3,7 +3,7 @@
 import { ApiError } from "./types";
 import type { Backend } from "./client";
 
-type Reply = { id: number; ok?: string; err?: string };
+type Reply = { id: number; ok?: string; err?: string; progress?: { buffer: SharedArrayBuffer; at: number } };
 
 export function wasmBackend(): Backend {
   if (!globalThis.crossOriginIsolated) {
@@ -12,7 +12,12 @@ export function wasmBackend(): Backend {
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
   let next = 1;
+  let counter: Uint32Array | null = null;
   worker.addEventListener("message", (e: MessageEvent<Reply>) => {
+    if (e.data.progress) {
+      counter = new Uint32Array(e.data.progress.buffer, e.data.progress.at, 1);
+      return;
+    }
     const p = pending.get(e.data.id);
     if (!p) return;
     pending.delete(e.data.id);
@@ -43,6 +48,9 @@ export function wasmBackend(): Backend {
         pending.set(id, { resolve, reject });
         worker.postMessage({ id, method, body: JSON.stringify(body ?? {}) });
       });
+    },
+    async progress() {
+      return counter ? Atomics.load(counter, 0) / 10000 : null;
     },
   };
 }

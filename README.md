@@ -92,6 +92,7 @@ WASM: `call(method, body)`). Errors are `{"status", "message"}` (HTTP status 400
 | `cost`           | `{request, key}`             | `{text}`: what that constraint costs                         |
 | `add_constraint` | `{request, key}`             | `{request}` with the constraint anchored on the current plan |
 | `set_objective`  | `{request, objective}`       | `{request}` (switching to max floor space suggests minimums) |
+| `progress`       | `{}`                         | `{done}`: how far the running solve has got, 0 to 1 (the WASM build reads a shared counter instead) |
 
 A request is `{objective, params, constraints: [{key, op: "min"|"eq"|"max", value}]}`. Anything missing
 takes its default and everything is clamped to the slider ranges; replies carry the checked request back.

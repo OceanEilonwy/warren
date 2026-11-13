@@ -1,8 +1,9 @@
 // Page shell: progress bar and status, the header, and whichever screen is showing.
 import { createEffect, Match, Show, Switch } from "solid-js";
 import logo from "../logo.svg";
-import { busy, costing, error, fatal, go, meta, view } from "../state";
+import { busy, costing, error, fatal, go, meta, progress, view } from "../state";
 import { Front } from "./Front";
+import { Pct } from "./Pct";
 import { More } from "./More";
 import { Workings } from "./Workings";
 
@@ -15,12 +16,20 @@ function Status() {
       document.documentElement.classList.toggle("costing", cost);
     },
   );
+  // a known fraction turns the sliding bar into a filling one
+  createEffect(progress, (f) => {
+    const html = document.documentElement;
+    html.classList.toggle("known", f !== null);
+    html.style.setProperty("--progress", `${Math.round((f ?? 0) * 100)}%`);
+  });
   return (
     <>
       <div id="topbar" aria-hidden="true" />
       <div id="status" role="status" aria-live="polite">
         <span class="spinner" aria-hidden="true" />
-        <span class="when-calc">Re-planning your herd…</span>
+        <span class="when-calc">
+          Re-planning your herd…<Pct />
+        </span>
         <span class="when-cost">Working out what each answer costs…</span>
       </div>
       <div id="status-error" role="alert" hidden={!error()}>

@@ -218,3 +218,40 @@ fn an_empty_layout_is_never_feasible() {
     assert!(q.objective_value > 1.5 && q.objective_value < 3.0, "{}", q.objective_value);
     assert!(meat(&q) > 0.0);
 }
+
+/// Samples the progress counter from another thread while solving; it should climb steadily, never go
+/// down, and end close to full.
+fn progress_trace(problem: &Problem) -> Vec<f64> {
+    let prog = std::sync::Arc::new(Progress::default());
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let sampler = {
+        let (prog, stop) = (prog.clone(), stop.clone());
+        std::thread::spawn(move || {
+            let mut seen = Vec::new();
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                seen.push(prog.fraction());
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            seen
+        })
+    };
+    solve_tracked(problem, OptConfig { eval_runs: 16, eval_years: 3, rounds: 3 }, &prog);
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    let mut seen = sampler.join().unwrap();
+    seen.push(prog.fraction());
+    seen
+}
+
+#[test]
+fn progress_only_climbs_and_ends_near_full() {
+    for obj in [Objective::MaxMeat, Objective::MaxQol] {
+        let mut p = default_problem(obj);
+        if obj == Objective::MaxQol {
+            p = p.with_out(Out::PeakHead, Bound::at_least(20.0));
+        }
+        let seen = progress_trace(&p);
+        assert!(seen.windows(2).all(|w| w[1] >= w[0]), "{obj:?}: progress went down");
+        let last = *seen.last().unwrap();
+        assert!(last > 0.95 && last < 1.0, "{obj:?}: ended at {last}");
+    }
+}

@@ -4,6 +4,7 @@ use rayon::prelude::*;
 
 use super::layout::{Layout, compute_layout};
 use super::params::Params;
+use super::progress::Progress;
 use super::sim::{CageSnap, RunResult, effective, simulate_run};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
@@ -170,6 +171,11 @@ pub fn simulate(p: &Params) -> Summary {
 }
 
 pub fn simulate_runs(p: &Params, runs: usize) -> Summary {
+    simulate_runs_tracked(p, runs, &Progress::default())
+}
+
+/// [`simulate_runs`], counting each finished run (its years) into `progress`.
+pub fn simulate_runs_tracked(p: &Params, runs: usize, progress: &Progress) -> Summary {
     let layout = compute_layout(p);
     let eff = effective(p, &layout);
     if !layout.feasible || eff.does == 0 || runs == 0 {
@@ -188,7 +194,15 @@ pub fn simulate_runs(p: &Params, runs: usize) -> Summary {
             runs: 0,
         };
     }
-    let rs: Vec<RunResult> = (0..runs as u64).into_par_iter().map(|i| simulate_run(p, &layout, p.seed + i)).collect();
+    let years = u64::from(p.years);
+    let rs: Vec<RunResult> = (0..runs as u64)
+        .into_par_iter()
+        .map(|i| {
+            let r = simulate_run(p, &layout, p.seed + i);
+            progress.add(years);
+            r
+        })
+        .collect();
     let mut metrics = [Stat::default(); 14];
     for (i, k) in MetricKey::ALL.iter().enumerate() {
         metrics[i] = stat(&rs.iter().map(|r| k.of(r)).collect::<Vec<_>>());
