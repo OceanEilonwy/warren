@@ -352,9 +352,7 @@ impl<'a> Sim<'a> {
             let (age, sex) = items[k];
             let req = self.req_grower(age);
             let old = age >= self.p.sex_separate_days as i32;
-            free[e] + 1e-9 >= req
-                && !(old && tag[e].is_some_and(|s| s != sex))
-                && area(e) / (cnt[e] + 1) as f64 > room(d, cnt) + 1e-9
+            free[e] + 1e-9 >= req && !(old && tag[e].is_some_and(|s| s != sex)) && area(e) / (cnt[e] + 1) as f64 > room(d, cnt) + 1e-9
         };
         for _ in 0..n_c * 4 {
             // the most crowded grower cage that can send someone somewhere roomier (the roomiest that takes them)
@@ -364,7 +362,10 @@ impl<'a> Sim<'a> {
                     continue;
                 }
                 for e in 0..n_c {
-                    if e == d || !matches!(role[e], CageRole::Empty | CageRole::Growers) || !(0..items.len()).any(|k| at[k] == d && fits(k, d, e, free, cnt, tag)) {
+                    if e == d
+                        || !matches!(role[e], CageRole::Empty | CageRole::Growers)
+                        || !(0..items.len()).any(|k| at[k] == d && fits(k, d, e, free, cnt, tag))
+                    {
                         continue;
                     }
                     let better = pick.is_none_or(|(pd, pe)| {
