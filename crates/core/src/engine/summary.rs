@@ -117,7 +117,10 @@ pub struct Summary {
     pub cages: Series,
     pub meat: Series,
     pub cost: Series,
+    /// The last day of a typical run (see `typical_snapshot`).
     pub snapshot: Vec<CageSnap>,
+    /// The busiest day of a run with a typical peak (see `peak_snapshot`).
+    pub peak_snapshot: Vec<CageSnap>,
     pub runs: usize,
 }
 
@@ -155,6 +158,13 @@ fn typical_snapshot(rs: &[RunResult]) -> Vec<CageSnap> {
     order.get(rs.len() / 2).map_or_else(Vec::new, |&i| rs[i].snapshot.clone())
 }
 
+/// The busiest-day snapshot of the run whose peak headcount is the median (lowest seed on ties).
+fn peak_snapshot(rs: &[RunResult]) -> Vec<CageSnap> {
+    let mut order: Vec<usize> = (0..rs.len()).collect();
+    order.sort_by(|&a, &b| rs[a].peak_head.total_cmp(&rs[b].peak_head).then(a.cmp(&b)));
+    order.get(rs.len() / 2).map_or_else(Vec::new, |&i| rs[i].peak_snapshot.clone())
+}
+
 pub fn simulate(p: &Params) -> Summary {
     simulate_runs(p, p.runs as usize)
 }
@@ -174,6 +184,7 @@ pub fn simulate_runs(p: &Params, runs: usize) -> Summary {
             meat: Series::default(),
             cost: Series::default(),
             snapshot: Vec::new(),
+            peak_snapshot: Vec::new(),
             runs: 0,
         };
     }
@@ -192,6 +203,7 @@ pub fn simulate_runs(p: &Params, runs: usize) -> Summary {
         meat: series(&rs, |r| &r.weekly.meat),
         cost: series(&rs, |r| &r.weekly.cost),
         snapshot: typical_snapshot(&rs),
+        peak_snapshot: peak_snapshot(&rs),
         runs,
         layout,
     }

@@ -91,6 +91,34 @@ fn growers_always_meet_code_area_over_many_seeds() {
 }
 
 #[test]
+fn busiest_day_snapshot_holds_the_peak_and_every_snapshot_meets_the_code() {
+    // spreading growers out for the picture must keep each cage within its Code area and single-sex rule
+    let p = Params { years: 3, ..base() };
+    let l = compute_layout(&p);
+    let fits = |snaps: &[CageSnap]| {
+        for (snap, cage) in snaps.iter().zip(&l.cages) {
+            if snap.role == CageRole::Growers {
+                let need = (snap.count - snap.older) as f64 * code::GROWER_5_TO_12WK * p.qol_young
+                    + snap.older as f64 * code::OVER_12WK_GROUP * p.qol_old;
+                assert!(need <= cage.area + 1e-9, "{} growers ({} older) in {:.2} m²", snap.count, snap.older, cage.area);
+            }
+        }
+    };
+    for seed in 1..40 {
+        let r = simulate_run(&p, &l, seed);
+        assert_eq!(r.peak_snapshot.len(), l.n_cages());
+        let peak: u32 = r.peak_snapshot.iter().map(|c| c.count).sum();
+        assert_eq!(peak as f64, r.peak_head, "seed {seed}");
+        let last: u32 = r.snapshot.iter().map(|c| c.count).sum();
+        assert!(last <= peak || r.peak_head == 0.0);
+        fits(&r.snapshot);
+        fits(&r.peak_snapshot);
+    }
+    let s = simulate(&p);
+    assert_eq!(s.peak_snapshot.len(), s.layout.n_cages());
+}
+
+#[test]
 fn infeasible_space_gives_empty_summary_not_a_panic() {
     let s = simulate(&Params { width_m: 0.5, depth_m: 0.4, ..Params::default() });
     assert!(!s.layout.feasible);

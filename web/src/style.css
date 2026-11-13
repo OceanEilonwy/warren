@@ -155,7 +155,14 @@ a.bad { color: var(--bad); font-weight: 600; }
 .seg-pills { background: var(--surface-2); border-radius: 26px; padding: 4px; gap: 4px; }
 .seg-pills .pill span { border-color: transparent; background: transparent; min-height: 40px; padding: 0 22px; }
 .seg-pills .pill input:checked + span { background: var(--accent); }
-.hutch-tools { display: flex; align-items: center; gap: 14px; }
+.hutch-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.icon-btn { display: inline-flex; align-items: center; gap: 6px; }
+/* full screen: the browser's own (:fullscreen), or the hutch fixed over the window where there isn't one */
+.hutch:fullscreen, .hutch.full { background: var(--bg); padding: 16px; gap: 10px; }
+.hutch.full { position: fixed; inset: 0; z-index: 70; }
+html.hutch-full { overflow: hidden; }
+.hutch:fullscreen .hutch-3d, .hutch.full .hutch-3d { flex: 1; height: auto; min-height: 0; }
+.seg-pills.small .pill span { min-height: 34px; padding: 0 14px; font-size: 14px; }
 .hutch-3d {
   position: relative; height: 520px; border-radius: 20px; overflow: hidden; touch-action: none; cursor: grab;
   background: radial-gradient(ellipse at 50% 35%, #ffffff 0%, var(--surface-2) 70%);

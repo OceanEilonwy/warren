@@ -5,11 +5,25 @@ import { num } from "../format";
 import type { Hutch as HutchApi, HutchData } from "../hutch/scene";
 import { BuildPlan } from "./BuildPlan";
 
+/** Which day the 3D view shows: a typical day, or the busiest. */
+export type HutchDay = "typical" | "busiest";
+
+function snapOf(s: SolveView, day: HutchDay) {
+  const snap = day === "busiest" ? s.peak_snapshot : s.snapshot;
+  return snap?.length === s.layout.cages.length ? snap : null;
+}
+
+/** Rabbits in the hutch on that day. */
+function headOn(s: SolveView, day: HutchDay): number | null {
+  const snap = snapOf(s, day);
+  return snap ? snap.reduce((n, c) => n + c.count, 0) : null;
+}
+
 /** The 3D scene's input, from a solved plan. */
-export function hutchData(s: SolveView): HutchData {
+export function hutchData(s: SolveView, day: HutchDay = "typical"): HutchData {
   const p = s.params;
   const l = s.layout;
-  const snap = s.snapshot.length === l.cages.length ? s.snapshot : null;
+  const snap = snapOf(s, day);
   return {
     width: num(p.width_m),
     rows: l.rows,
@@ -38,7 +52,7 @@ export function hutchData(s: SolveView): HutchData {
   };
 }
 
-function Hutch3D(props: { s: SolveView; lift: boolean; onFail: (why: string) => void; api: (h: HutchApi | null) => void }) {
+function Hutch3D(props: { s: SolveView; day: HutchDay; lift: boolean; onFail: (why: string) => void; api: (h: HutchApi | null) => void }) {
   let el!: HTMLDivElement;
   let hutch: HutchApi | null = null;
   const [loading, setLoading] = createSignal(true);
@@ -48,7 +62,7 @@ function Hutch3D(props: { s: SolveView; lift: boolean; onFail: (why: string) => 
       try {
         const { createHutch } = await import("../hutch/scene");
         if (dead) return;
-        hutch = await createHutch(el, hutchData(props.s));
+        hutch = await createHutch(el, hutchData(props.s, props.day));
         if (dead) return hutch.dispose();
         hutch.setLift(props.lift);
         props.api(hutch);
@@ -66,8 +80,8 @@ function Hutch3D(props: { s: SolveView; lift: boolean; onFail: (why: string) => 
     };
   });
   createEffect(
-    () => props.s,
-    (s) => hutch?.update(hutchData(s)),
+    () => [props.s, props.day] as const,
+    ([s, day]) => hutch?.update(hutchData(s, day)),
   );
   createEffect(
     () => props.lift,
@@ -86,12 +100,48 @@ function Hutch3D(props: { s: SolveView; lift: boolean; onFail: (why: string) => 
 }
 
 export function Hutch(props: { s: SolveView }) {
+  let box!: HTMLDivElement;
   const [mode, setMode] = createSignal<"3d" | "plan">("3d");
+  // full screen: the browser's own where it has one (not iPhone Safari), else the hutch fills the window
+  const [full, setFull] = createSignal(false);
+  const native = () => typeof document !== "undefined" && document.fullscreenEnabled && !!box?.requestFullscreen;
+  const toggleFull = () => {
+    if (full()) {
+      if (document.fullscreenElement) void document.exitFullscreen();
+      else setFull(false);
+    } else if (native()) {
+      box.requestFullscreen().catch(() => setFull(true));
+    } else setFull(true);
+  };
+  onSettled(() => {
+    const onChange = () => setFull(document.fullscreenElement === box);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && full() && !document.fullscreenElement) setFull(false);
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      document.removeEventListener("keydown", onKey);
+      if (document.fullscreenElement === box) void document.exitFullscreen();
+    };
+  });
+  createEffect(
+    () => full(),
+    (on) => {
+      document.documentElement.classList.toggle("hutch-full", on);
+    },
+  );
   const [lift, setLift] = createSignal(false);
+  const [day, setDay] = createSignal<HutchDay>("typical");
+  const dayLabel = (d: HutchDay) => {
+    const n = headOn(props.s, d);
+    return `${d === "typical" ? "Typical day" : "Busiest day"}${n === null ? "" : ` · ${n}`}`;
+  };
   const [failed, setFailed] = createSignal<string | null>(null);
   let api: HutchApi | null = null;
   return (
-    <div class="hutch">
+    <div class={{ hutch: true, full: full() && !document.fullscreenElement }} ref={box}>
       <div class="hutch-bar">
         <div class="pills seg-pills" role="radiogroup" aria-label="View">
           <label class="pill">
@@ -99,18 +149,42 @@ export function Hutch(props: { s: SolveView }) {
             <span>3D</span>
           </label>
           <label class="pill">
-            <input type="radio" name="hutch-view" checked={mode() === "plan"} onChange={() => setMode("plan")} />
+            <input
+              type="radio"
+              name="hutch-view"
+              checked={mode() === "plan"}
+              onChange={() => {
+                if (full()) toggleFull();
+                setMode("plan");
+              }}
+            />
             <span>Plan</span>
           </label>
         </div>
         <Show when={mode() === "3d" && !failed()}>
           <div class="hutch-tools">
+            <div class="pills seg-pills small" role="radiogroup" aria-label="Which day to show">
+              <label class="pill" data-tip="The last day of a typical run: what the hutch usually looks like.">
+                <input type="radio" name="hutch-day" checked={day() === "typical"} onChange={() => setDay("typical")} />
+                <span>{dayLabel("typical")}</span>
+              </label>
+              <label class="pill" data-tip="The day the herd was biggest in a run with a typical peak: every cage the plan needs is in use.">
+                <input type="radio" name="hutch-day" checked={day() === "busiest"} onChange={() => setDay("busiest")} />
+                <span>{dayLabel("busiest")}</span>
+              </label>
+            </div>
             <label class="check">
               <input type="checkbox" checked={lift()} onChange={(e) => setLift(e.currentTarget.checked)} />
               <span>Lift the top tier to look in</span>
             </label>
             <button type="button" class="soft" onClick={() => api?.frontOn()}>
               Front on
+            </button>
+            <button type="button" class="soft icon-btn" onClick={toggleFull} aria-pressed={full() ? "true" : "false"} data-tip={full() ? "Back to the page (Esc)" : "Fill the screen with the 3D view"}>
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d={full() ? "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" : "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"} />
+              </svg>
+              <span>{full() ? "Exit full screen" : "Full screen"}</span>
             </button>
           </div>
         </Show>
@@ -128,6 +202,7 @@ export function Hutch(props: { s: SolveView }) {
       >
         <Hutch3D
           s={props.s}
+          day={day()}
           lift={lift()}
           onFail={(why) => {
             setFailed(why);

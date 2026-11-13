@@ -61,7 +61,10 @@ pub struct RunResult {
     pub cage_use: f64,
     pub litters_per_doe_yr: f64,
     pub butcher_age_wk: f64,
+    /// What is in each cage on the last day.
     pub snapshot: Vec<CageSnap>,
+    /// What is in each cage on the busiest day after start-up (the first day the headcount hit `peak_head`).
+    pub peak_snapshot: Vec<CageSnap>,
 }
 
 /// `Params::post_wean_mortality` is the share of growers lost over this many days (6 to 12 weeks of age).
@@ -222,7 +225,7 @@ impl<'a> Sim<'a> {
     fn pack(&self, sc: &mut Scratch) -> Packed {
         let t = self.t;
         let n_c = self.l.n_cages();
-        let Scratch { role, cnt, older, free, tag, solos, items } = sc;
+        let Scratch { role, cnt, older, free, tag, solos, items, at } = sc;
         role.clear();
         role.resize(n_c, CageRole::Empty);
         cnt.clear();
@@ -235,6 +238,7 @@ impl<'a> Sim<'a> {
         tag.resize(n_c, None);
         solos.clear();
         items.clear();
+        at.clear();
         let mut unplaced = 0usize;
         for (i, d) in self.does.iter().enumerate() {
             let Some(&c) = self.doe_idx.get(i) else {
@@ -283,7 +287,8 @@ impl<'a> Sim<'a> {
         }
         // everyone else: best-fit by area, single-sex once old enough; open the biggest empty cage when needed
         items.sort_by_key(|a| std::cmp::Reverse(a.0));
-        for &(age, sex) in items.iter() {
+        at.resize(items.len(), usize::MAX);
+        for (k, &(age, sex)) in items.iter().enumerate() {
             let req = self.req_grower(age);
             let old = age >= self.p.sex_separate_days as i32;
             let mut best: Option<usize> = None;
@@ -316,6 +321,7 @@ impl<'a> Sim<'a> {
                 }
             }
             let b = best.unwrap();
+            at[k] = b;
             free[b] -= req;
             cnt[b] += 1;
             if age >= 84 {
@@ -327,6 +333,71 @@ impl<'a> Sim<'a> {
         }
         let used = role.iter().filter(|r| **r != CageRole::Empty).count();
         Packed { unplaced, used }
+    }
+
+    /// After a successful `pack`, spread the growers out as a keeper would: move rabbits from the most
+    /// crowded grower cage into empty cages, or less crowded grower cages, while each move gives the rabbit
+    /// more floor. `pack` fills as few cages as possible, which is what decides whether everyone fits; the
+    /// cages it leaves empty are there for the peak, but on an ordinary day there is no reason to leave
+    /// them unused. Every cage still meets the Code area and single-sex rule.
+    #[allow(clippy::needless_range_loop)]
+    fn spread(&self, sc: &mut Scratch) {
+        let n_c = self.l.n_cages();
+        let Scratch { role, cnt, older, free, tag, items, at, .. } = sc;
+        let area = |c: usize| self.l.cages[c].area;
+        // floor per rabbit in cage c
+        let room = |c: usize, cnt: &[u32]| area(c) / cnt[c].max(1) as f64;
+        // whether rabbit k can go from cage d to cage e and have more floor there than it has now
+        let fits = |k: usize, d: usize, e: usize, free: &[f64], cnt: &[u32], tag: &[Option<Sex>]| {
+            let (age, sex) = items[k];
+            let req = self.req_grower(age);
+            let old = age >= self.p.sex_separate_days as i32;
+            free[e] + 1e-9 >= req
+                && !(old && tag[e].is_some_and(|s| s != sex))
+                && area(e) / (cnt[e] + 1) as f64 > room(d, cnt) + 1e-9
+        };
+        for _ in 0..n_c * 4 {
+            // the most crowded grower cage that can send someone somewhere roomier (the roomiest that takes them)
+            let mut pick: Option<(usize, usize)> = None;
+            for d in 0..n_c {
+                if role[d] != CageRole::Growers || cnt[d] < 2 {
+                    continue;
+                }
+                for e in 0..n_c {
+                    if e == d || !matches!(role[e], CageRole::Empty | CageRole::Growers) || !(0..items.len()).any(|k| at[k] == d && fits(k, d, e, free, cnt, tag)) {
+                        continue;
+                    }
+                    let better = pick.is_none_or(|(pd, pe)| {
+                        let (a, b) = (room(d, cnt), room(pd, cnt));
+                        a < b - 1e-9 || (a < b + 1e-9 && area(e) / (cnt[e] + 1) as f64 > area(pe) / (cnt[pe] + 1) as f64)
+                    });
+                    if better {
+                        pick = Some((d, e));
+                    }
+                }
+            }
+            let Some((d, e)) = pick else { return };
+            for k in 0..items.len() {
+                if at[k] != d || cnt[d] < 2 || !fits(k, d, e, free, cnt, tag) {
+                    continue;
+                }
+                let (age, sex) = items[k];
+                let req = self.req_grower(age);
+                at[k] = e;
+                free[d] += req;
+                free[e] -= req;
+                cnt[d] -= 1;
+                cnt[e] += 1;
+                if age >= 84 {
+                    older[d] -= 1;
+                    older[e] += 1;
+                }
+                if age >= self.p.sex_separate_days as i32 {
+                    tag[e] = Some(sex);
+                }
+                role[e] = CageRole::Growers;
+            }
+        }
     }
 }
 
@@ -345,12 +416,22 @@ struct Scratch {
     tag: Vec<Option<Sex>>,
     solos: Vec<i32>,
     items: Vec<(i32, Sex)>,
+    /// The cage `pack` put each of `items` in.
+    at: Vec<usize>,
 }
 
 impl Scratch {
     /// What is in each cage after the last `pack`.
     fn snapshot(&self) -> Vec<CageSnap> {
-        self.role.iter().zip(&self.cnt).zip(&self.older).map(|((&role, &count), &older)| CageSnap { role, count, older }).collect()
+        let mut out = Vec::new();
+        self.snapshot_into(&mut out);
+        out
+    }
+
+    /// `snapshot` into a buffer kept by the caller (no allocation once it has grown).
+    fn snapshot_into(&self, out: &mut Vec<CageSnap>) {
+        out.clear();
+        out.extend(self.role.iter().zip(&self.cnt).zip(&self.older).map(|((&role, &count), &older)| CageSnap { role, count, older }));
     }
 }
 
@@ -422,6 +503,7 @@ pub fn simulate_run(p: &Params, l: &Layout, seed: u64) -> RunResult {
     let (mut pellet, mut hay, mut buy_cost, mut peak) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
     let (mut cage_days, mut counted_days, mut litters, mut doe_days) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
     let mut snapshot: Vec<CageSnap> = Vec::new();
+    let mut peak_snapshot: Vec<CageSnap> = Vec::new();
     let mut scratch = Scratch::default();
     let mut spare: Vec<Grower> = Vec::new();
     let warm = counted_from_day(p);
@@ -654,11 +736,17 @@ pub fn simulate_run(p: &Params, l: &Layout, seed: u64) -> RunResult {
 
         // cage allocation
         let mut used = 0usize;
+        let mut all_placed = false;
         for _ in 0..500 {
             let res = s.pack(&mut scratch);
             if res.unplaced == 0 || !s.cull_oldest() {
                 used = res.used;
+                all_placed = res.unplaced == 0;
                 if t == days - 1 {
+                    // only the picture needs it: nothing else depends on which cage a grower is in
+                    if res.unplaced == 0 {
+                        s.spread(&mut scratch);
+                    }
                     snapshot = scratch.snapshot()
                 }
                 break;
@@ -707,6 +795,13 @@ pub fn simulate_run(p: &Params, l: &Layout, seed: u64) -> RunResult {
         if post {
             pellet += pk;
             hay += hk;
+            if h > peak {
+                // a new busiest day: keep the picture (rare, and the buffer is reused)
+                if all_placed {
+                    s.spread(&mut scratch);
+                }
+                scratch.snapshot_into(&mut peak_snapshot);
+            }
             peak = peak.max(h);
             cage_days += used as f64 / l.n_cages().max(1) as f64;
             counted_days += 1.0;
@@ -738,5 +833,6 @@ pub fn simulate_run(p: &Params, l: &Layout, seed: u64) -> RunResult {
         litters_per_doe_yr: if doe_days > 0.0 { litters / (doe_days / 365.0) } else { 0.0 },
         butcher_age_wk: if s.age_n > 0.0 { s.age_sum / s.age_n / 7.0 } else { 0.0 },
         snapshot,
+        peak_snapshot,
     }
 }

@@ -59,6 +59,8 @@ export interface SolveView {
   layout: Layout;
   /** What's in each cage on a typical day; `older` = growers 12 weeks or older. */
   snapshot: { role: CageRole; count: number; older: number }[];
+  /** The same on the busiest day (a typical run's peak headcount). */
+  peak_snapshot: { role: CageRole; count: number; older: number }[];
   series: { head: Series; growers: Series; cages: Series; meat: Series; cost: Series };
   eff_wean: number;
   eff_does: number;

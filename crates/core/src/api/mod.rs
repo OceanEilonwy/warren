@@ -90,8 +90,11 @@ pub struct SolveView {
     /// Mean / P10 / P90 of every result, by `MetricKey::key`.
     pub metrics: HashMap<&'static str, Stat>,
     pub layout: Layout,
-    /// What is in each cage at the end of the first run (same order as `layout.cages`).
+    /// What is in each cage on a typical day: the last day of the run with the median final headcount
+    /// (same order as `layout.cages`).
     pub snapshot: Vec<CageSnap>,
+    /// What is in each cage on the busiest day of the run with the median peak headcount.
+    pub peak_snapshot: Vec<CageSnap>,
     /// Weekly series across runs.
     pub series: SeriesView,
     pub eff_wean: u32,
@@ -311,6 +314,7 @@ impl Api {
             metrics: MetricKey::ALL.iter().map(|k| (k.key(), s.metric(*k))).collect(),
             layout: s.layout.clone(),
             snapshot: s.snapshot.clone(),
+            peak_snapshot: s.peak_snapshot.clone(),
             series: SeriesView {
                 head: s.head.clone(),
                 growers: s.growers.clone(),
